@@ -1,0 +1,513 @@
+//
+//  MAppHttp.h
+//  MHTTPRequestTest
+//
+//  Created by sunjun on 13-6-11.
+//  Copyright (c) 2013年 sunjun. All rights reserved.
+//
+
+#import <UIKit/UIKit.h>
+#import "IHttpRequest.h"
+#import "HttpInfo.h"
+#import "LOHelp.h"
+#import "NSString+JSONCategories.h"
+#include "dataCentreHeader.h"
+#import <ShareSDK/ShareSDK.h>
+
+//164 为开发服务器    locojoylive#contactsaddressbook1
+//163为测试服务器。  locojoylive#contactsaddressbook2
+//  上线     locojoylive#contactsaddressbook3
+//#define TEST_APP  0      //测试宏
+//#define APP_ISDEVELOPER    1//开发控制的宏
+//#define APP_PRODUCT_IS   0  //如果发布的是上线包
+
+
+/*
+#if TEST_APP  //测试
+#define RES_BASE_URL (@"http://210.14.130.163:8080/resweb/res/get?resid=")
+#define BASE_URL      @"http://210.14.130.163:8080"
+#define BASE_URLS        @"https://210.14.130.163:8443"
+#define RESOUR_BASE_URL @"http://210.14.130.163:80/index.php/Txb/Interface"
+#define easemod_key     @"locojoylive#contactsaddressbook2"
+#elif APP_ISDEVELOPER  //开发
+#define RES_BASE_URL (@"http://210.14.130.164:8080/resweb/res/get?resid=")
+#define BASE_URL         @"http://210.14.130.164:8080"
+#define BASE_URLS        @"https://210.14.130.164:8443"
+#define RESOUR_BASE_URL @"http://210.14.130.164:80/index.php/Txb/Interface"
+#define easemod_key     @"locojoylive#contactsaddressbook1"
+#else   //发布
+#define easemod_key     @"locojoylive#contactsaddressbook3"
+
+#endif*/
+
+
+#define  ISPRODUCT         1 //正式发布- 此处为1  ，开发此处为0 ， 测试包-此处为 2
+
+#define BASE_URL           [LOConfigModel sharedConfigModel].config.app_server
+#define BASE_URLS          [LOConfigModel sharedConfigModel].config.https_server
+#define RES_BASE_URL       [NSString stringWithFormat:@"%@/resweb/res/get?resid=",[LOConfigModel sharedConfigModel].config.pic_server]
+#define RESOUR_BASE_URL    [NSString stringWithFormat:@"%@/index.php/Txb/Interface",[LOConfigModel sharedConfigModel].config.manage_server]
+
+
+
+@interface LOConfigModel : NSObject
+
++(LOConfigModel *) sharedConfigModel;
+
+@property(nonatomic,strong) LOConfig *config;
+
+
+@end
+
+
+
+//6B8Ke6WdRt6SFwBOusdCDP
+typedef NS_ENUM(NSInteger, HttpLoginType){
+    user_id = 0,   //id用户id
+    user_phoneNumber,  //手机号码
+    user_code,        //卓越通讯录号
+    user_email,       //绑定邮箱
+};
+
+typedef NS_ENUM(NSInteger, VerifyType) {
+    verify_register = 1,  //1 注册验证
+    verity_binding,       //绑定验证
+    verity_password,      //找回密码
+};
+
+//typedef NS_ENUM (NSInteger, CirecleType)
+//{
+//
+//    circleType_occupation = 1, //工作圈子
+//    CircleType_education,      //教育圈子
+//};
+
+@interface MAppHttpJson : AFHTTPResponseSerializer
+@end
+
+@interface MAppHttp : IHttpRequest
+
+/**
+    登陆接口
+ */
+-(RequestID *) http_login:(NSString *)param password:(NSString *)password type:(HttpLoginType) type;
+
+//短信验证
+-(RequestID *) http_smsVerify:(NSString *)mobile verifty:(VerifyType) type;
+
+//邮箱验证
+-(RequestID *) http_emailVerify:(NSString *)email verifty:(VerifyType) type;
+
+//验证校验码 mobile - email 二者选择传一个参数
+-(RequestID *) http_userVerify:(NSString *)mobile email:(NSString *)email verityCode:(NSString *)code;
+
+//向指定联系人发送短信消息
+-(RequestID *) http_sendSms:(NSString *)contactId content:(NSString *)text;
+
+//重新绑定  mobile - email 二者选择传一个参数
+-(RequestID *) http_userBind:(NSString *)mobile email:(NSString *)email verityCode:(NSString *)code;
+
+//找回密码
+-(RequestID *) http_userPassword:(NSString *)newPassword verify:(NSString *)verify verifyKey:(NSString *)verifykey;
+
+//用户注册
+-(RequestID *) http_userRegister:(NSDictionary *)dict;
+
+//退出登录
+-(RequestID *) http_userLogout;
+
+//编辑用户资料
+-(RequestID *) http_userEdit:(NSDictionary *)param  image:(NSData *)imageData;
+
+//同步用户资料
+-(RequestID *) http_userSync:(NSString *)time;
+
+//查看陌生人资料
+-(RequestID *) http_userView:(NSString *)userId time:(NSString *)time;
+
+//查看用户隐私
+-(RequestID *) http_userPrivacy:(NSString *)time;
+
+//新增标签（注册）
+-(RequestID *) http_labelAdd:(NSString *)userId labelName:(NSString *)labelName;
+
+//删除标签（注册）
+-(RequestID *) http_labelDelete:(NSArray *)labelIds;
+
+//查看标签（注册）
+-(RequestID *) http_labelView:(NSString *)userId time:(NSString *)time count:(NSInteger) count;
+
+//同步标签（注册）
+-(RequestID *) http_labelSync:(NSString *)userId;
+
+//点击标签（注册）
+-(RequestID *) http_labelClick:(NSString *)userId labelId:(NSString *)labelId;
+
+//新增工作经历
+-(RequestID *) http_jobAdd:(JobItem *)jobItem;
+
+//编辑工作经历
+-(RequestID *) http_jobEdit:(JobItem *)jobItem;
+
+//删除工作经历
+-(RequestID *) http_jobDelete:(NSString *)jobId selected:(NSString *)selected nid:(NSString *)nid IsDefJob:(BOOL)isDefJob;
+
+//同步工作经历
+-(RequestID *) http_jobSync;
+
+//新增教育经历
+-(RequestID *) http_educationAdd:(EducationItem *) education;
+
+//编辑教育经历
+-(RequestID *) http_educationEdit:(EducationItem *) education;
+
+//删除教育经历
+-(RequestID *) http_educationDelete:(NSString *) educationId selected:(NSString *)selected nid:(NSString *)nid IsDefEducation:(BOOL)isDefEducation;
+
+//同步教育经历
+-(RequestID *) http_educationSync;
+
+//新增评论  userId 被评论者id（陌生人用户id，联系人用户id）   replyId 被回复者id
+-(RequestID *) http_remarkAdd:(NSString *)userId replyId:(NSString *)replyId content:(NSString *)text;
+
+//删除评论
+-(RequestID *) http_remarkDelete:(NSArray *)remarkIds;
+
+//查看评论
+-(RequestID *) http_remarkView:(NSString *)userId time:(NSString *)time count:(NSInteger)count;
+
+//加入黑名单
+-(RequestID *) http_blackAdd:(NSString *)bid cid:(NSString *)cid del:(BOOL) ndelete;
+
+//撤销黑名单
+-(RequestID *) http_blackDelete:(NSString *)bid;
+
+//查看黑名单
+-(RequestID *) http_blackView:(NSString *)time;
+
+//添加名片申请
+-(RequestID *) http_userApplyAdd:(NSString *)userId postscript:(NSString *)postscript;
+
+//添加联系人并申请加好友
+-(RequestID *) http_userApplyAddContact:(NSString *)userId postscript:(NSString *)postscript;
+
+//给他名片
+-(RequestID *) http_userApplyGiveto:(NSString *)userId;
+
+//加他名片
+-(RequestID *) http_userApplyAddfrom:(NSString *)userId;
+
+//取消名片
+-(RequestID *) http_userApplyDelete:(NSString *)userId;
+
+//同步名片申请
+-(RequestID *) http_userApplySync:(NSString *)time count:(NSInteger)count;
+
+//同步用户状态（红点）
+-(RequestID *) http_userState;
+
+//同步好友动态
+-(RequestID *) http_userChangeSync:(NSString *)time count:(NSInteger)count;
+
+//同步我的访客
+-(RequestID *) http_userVisitSync:(NSString *)time count:(NSInteger)count;
+
+//我的访客消除红点
+-(RequestID *) Http_userVisitRedImageCancelWithparam:(NSArray *)param;
+
+//同步个人动态
+-(RequestID *) http_userPersionSync:(NSString *)time count:(NSInteger)count;
+
+//删除个人动态
+-(RequestID *) http_userPersionDeleteSync:(NSString *)dynamicID;
+
+//用户反馈
+-(RequestID *) http_userFeedback:(NSString *)content;
+
+//生成二维码
+-(RequestID *) http_getUserQrcode;
+
+//获取用户类型
+-(RequestID *) http_getUserType:(NSString *)userId;
+
+//查看陌生人或联系人详情资料
+/*
+ userId 用户id，仅用于分享查看其他人的联系人
+ contactId 联系人id
+ cid 注册用户id，仅用于查看陌生人、注册联系人
+ time 上次查看的时间，默认0
+ */
+-(RequestID *) http_userViewinfo:(NSString *)userId contactId:(NSString *)contactId cid:(NSString *)cid time:(NSString *)time;
+
+//新增标签（非注册）
+-(RequestID *) http_NRLabelAdd:(NSString *)uid name:(NSString *) name;
+
+//查看标签（非注册）
+-(RequestID *) http_NRLabelView:(NSString *)uid time:(NSString *)time count:(NSInteger)count;
+
+//同步标签（非注册）
+-(RequestID *) http_NRLabelSync:(NSString *)uid;
+
+//点击标签（非注册）
+-(RequestID *) http_NRLabelClick:(NSString *)contactId labelId:(NSString *)labelId;
+
+//新增群组
+-(RequestID *) http_groupAdd:(NSString *) name;
+
+//编辑群组 -  contacts 中存放 LOContactItem 对象
+-(RequestID *) http_groupEdit:(GroupItem *)group contacts:(NSArray *)contacts;
+
+//编辑联系人群组 groups-中存放GroupItem 对象
+-(RequestID *) http_groupEditContact:(NSString *)contactId groups:(NSArray *)groups;
+
+//删除群组
+-(RequestID *) http_groupDelete:(NSString *)groupId;
+
+//同步群组
+-(RequestID *) http_groupSycn:(NSString *)time;
+
+//上传联系人列表
+/*time上次同步时间，默认0
+ contacts上传联系人列表：最多1000个
+ username联系人姓名
+ phones号码列表（最多2备用号+1个绑定号），不能为空
+ type手机、单位、住宅、自定义，phone电话号码
+ groups所属群组列表，
+ 群组名*/
+-(RequestID *) http_uploadContacts:(NSString *)time contacts:(NSArray *)contacts;
+
+//同步联系人列表
+-(RequestID *) http_syncContacts:(NSString *)time;
+-(id)  sendSynContacts:(NSString *)time; //同步请求
+//添加联系人
+-(RequestID *) http_contactsAdd:(NSArray *)array images:(NSArray *)datas;
+
+//编辑联系人
+-(RequestID *) http_contactsEdit:(NSDictionary *)dict imageData:(NSData *)imageData;
+
+//删除联系人
+-(RequestID *) http_contactsDelete:(NSString *)contactId cid:(NSString *)cid;
+
+//查看联系人资料
+/*uid 用户id，仅用于分享查看其他人的联系人
+ id 联系人id
+ time 上次查看的时间，默认0
+ */
+-(RequestID *) http_contactsView:(NSString *)userId contactId:(NSString *)contactId time:(NSString *)time;
+
+//查看搜索好友资料
+- (RequestID *)http_viewFriend:(NSString *)idStr Uid:(NSString *)uidStr;
+
+//查看分享联系人资料
+/*
+ uid 用户id，仅用于分享查看其他人的联系人
+ id 联系人id
+ */
+
+-(RequestID *) http_contactViewShae:(NSString *)userId contactId:(NSString *)contactId;
+
+//消息设置联系人资料
+-(RequestID *) http_contactSetMessageInfo:(NSString *)userId time:(NSString *)time;
+
+//添加用户为联系人
+-(RequestID *) http_contactAddUser:(NSString *) userId;
+
+//添加号码为联系人
+-(RequestID *) http_contactAddMobile:(NSString *) mobile username:(NSString *)name;
+
+//同步冲突联系人列表
+-(RequestID *) http_conflictContactSync:(NSString *) time;
+
+//查看冲突联系人冲突信息
+-(RequestID *) http_conflictContactView:(NSString *) contactId;
+
+//冲突联系人转新建联系人
+-(RequestID *) http_conflictAddTo:(NSString *)contactId;
+
+//冲突联系人转任意联系人
+-(RequestID *) http_conflictAddany:(NSString *)contactId cid:(NSString *)cid;
+
+//删除冲突联系人
+-(RequestID *) http_conflictDelete:(NSString *)contactId;
+
+//上传位置
+-(RequestID *) http_userXyposUpload:(NSString *)longitude latiude:(NSString *) latitude;
+
+//取消位置
+-(RequestID *) http_userXyposDelete;
+
+//递名片发现
+-(RequestID *) http_findQuakePersion:(NSString *)longitude latiude:(NSString *) latitude distance:(NSString *)distance isLast:(BOOL)isLast time:(NSString *)time;
+
+//附近发现
+-(RequestID *) http_userFindNear:(NSString *)longitude latiude:(NSString *) latitude distance:(NSString *)distance time:(NSString *)time;
+
+//加入群换组
+-(RequestID *) http_userFindGroupAdd:(NSString *)gname longitude:(NSDecimalNumber *)longitude latiude:(NSDecimalNumber *) latitude distance:(NSString *)distance;
+
+//同步群换组
+-(RequestID *) http_userFindGroupSync;
+
+//退出群换组
+-(RequestID *) http_userFindGroupExit;
+
+//陌生人搜索
+-(RequestID *) http_userSearch:(NSString *)query begin:(NSInteger)beign count:(NSInteger)count;
+
+//搜索全部--综合搜索
+-(RequestID *) http_allSearch:(NSString *)query;
+//查看共同好友
+- (RequestID *)http_contactSfriend:(NSString *)uid isContact:(BOOL)isContact Start:(NSInteger)start Count:(NSInteger)count;
+
+- (RequestID *)http_contactShareInfo:(NSString *)uid;
+
+//推荐用户列表
+-(RequestID *) http_userRecommendList:(NSInteger) start count:(NSUInteger) count;
+
+//推荐用户列表--新接口
+-(RequestID *) http_userRecommendListNew:(NSInteger) start count:(NSUInteger) count;
+
+//推荐忽略用户--新增接口
+-(RequestID *) http_userIgnoreNew:(NSString *)uid;
+
+//取消红点--新接口
+-(RequestID *) http_cancelRead:(NSArray *)uids;
+
+//推荐用户屏蔽
+-(RequestID *) http_userRecommendDelete:(NSString *)userId;
+
+//发现-递名片-历史收到的名片
+- (RequestID *)http_findQuakeSync:(NSString *)time count:(NSInteger)count;
+
+//发现-递名片-删除历史收到的名片
+- (RequestID *)http_findQuakeDelete:(NSArray *)idArray;
+
+//公司搜索
+- (RequestID *)http_searchCompany:(NSString *)query begin:(NSInteger)begin count:(NSInteger)count;
+
+//学校搜索
+- (RequestID *)http_searchSchool:(NSString *)query begin:(NSInteger)begin count:(NSInteger)count;
+
+//教育背景导航
+- (RequestID *)http_selectEducation:(NSString *)idString;
+
+//工作背景导航
+- (RequestID *)http_selectWork:(NSString *)idString;
+
+//选取工作经历
+- (RequestID *)http_jobSelect:(NSString *)jobID;
+
+//选取教育经历
+- (RequestID *)http_eduSelect:(NSString *)eduID;
+
+//同步圈子
+-(RequestID *)http_circle;
+
+//查看圈子
+- (RequestID *)http_circleView:(CircleItem *)item Start:(NSInteger)start Count:(NSInteger)count Flag:(NSInteger)flag;
+
+//交换名片
+- (RequestID *)http_applyExchange:(NSString *)applyID;
+
+/*聊天群组部分*/
+
+//获取群聊信息
+-(RequestID *) getGroupInfo:(NSString *)groupId;
+//资源检查更新
+- (RequestID *)http_resCheck:(NSString *)u_id Version:(NSString *)version;
+
+//编辑群组
+-(RequestID *) http_groupChatEdit:(NSDictionary *)dict imageData:(NSData *)imageData;
+
+//生日提醒推荐同步
+-(RequestID *) http_userBirthSync:(NSUInteger) begin count:(NSUInteger) count;
+
+//名片申请短信
+- (RequestID *)http_smsApply:(NSString *)idStr Uid:(NSString *)uidStr;
+
+//添加分享名片为联系人
+- (RequestID *)http_contactAddContact:(NSString *)uid ID:(NSString *)userid;
+
+-(RequestID *) upLoadSource:(NSDictionary *) param images:(NSArray *)images progreBlock:(void (^)(NSUInteger bytesWritten, long long totalBytesWritten, long long totalBytesExpectedToWrite)) progreBlock;
+
+-(RequestID *) fileDownURL:(NSString *)url progreBlock:(void (^)(NSUInteger bytesWritten, long long totalBytesWritten, long long totalBytesExpectedToWrite)) progreBlock;
+
+//给服务器发送 推送 token
+-(RequestID *) sendToServerToken:(NSString *) token;
+
+//同步匹配列表
+-(RequestID *) sync_cmatch;
+
+//获取版本信息
+-(RequestID *) getVersion:(NSString *)u_id;
+//获取配置文件
+-(RequestID *) getConfig:(NSString *)u_id;
+//提交用户反馈
+-(RequestID *) submitFeedback:(NSString *) content;
+
+//获取广告信息
+- (RequestID *)getAdVert:(NSString *)u_id;
+
+//备份功能
+//创建备份-
+-(RequestID *) backupCreate:(NSInteger) force;
+
+//删除备份
+-(RequestID *) backupDeleted:(NSString *) backupId;
+
+//恢复联系人备份
+-(RequestID *) backupRestore:(NSString *) backupId;
+
+//同步联系人备份列表
+-(RequestID *) bakcupSyncList;
+
+//合并联系人
+- (RequestID *)http_mergeUser:(NSDictionary *)dict ImageData:(NSData *)imageData;
+
+//发送设备信息
+-(RequestID *) sendDeviceInfo;
+
+//同步单一好友动态
+-(RequestID *) http_changeUsersync:(NSInteger)count Uid:(NSString *)uid Time:(NSNumber *)time;
+
+#pragma mark  - thirdLogin
+- (RequestID *)thirdLogin_bindcheckWithUid:(NSString *)uid type:(SSDKPlatformType)type ; //注册时的检测
+
+- (RequestID *)thirdLogin_bindcommitWithThidPlatType:(SSDKPlatformType)type uid:(NSString *)uid nickName:(NSString *)nickName;
+
+- (RequestID *)thirdLogin_unbindThidPlatType:(SSDKPlatformType)type;
+
+- (RequestID *)thirdLogin_uploadHeadImage;
+
+- (RequestID *)thirdLogin_getLoginDetailWithUid:(NSString *)uid;
+
+@end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

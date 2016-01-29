@@ -1,0 +1,193 @@
+//
+//  MergeViewController.m
+//  T2
+//
+//  Created by t2 on 15/2/2.
+//  Copyright (c) 2015年 locojoy. All rights reserved.
+//
+
+#define CONFLICT_VIEW_TAG 1000
+
+#import "MergeViewController.h"
+#import <AddressBook/AddressBook.h>
+#import "ResourceManager.h"
+#import "UIImageView+WebCache.h"
+#import "ResourceManager.h"
+#import "PublicMethodObject.h"
+#import "MergeUserInfoViewController.h"
+#import "ConflictView.h"
+#import "SUCoreData.h"
+
+@interface MergeViewController () <UITableViewDataSource, UITableViewDelegate, ConflictDelegate>
+@property (nonatomic, strong) NSMutableArray *dataMutArray;
+@property (nonatomic, strong) UITableView *tableView;
+
+@property (nonatomic, strong) NSString *tableViewHeaderString;
+@property (nonatomic, assign) CGSize tableViewHeaderSize;
+@end
+
+@implementation MergeViewController
+
+- (instancetype)initWithDataArray:(NSArray *)dataArray
+{
+    self = [super init];
+    
+    if (self) {
+        self.dataMutArray = [NSMutableArray arrayWithArray:dataArray];
+    }
+    
+    return self;
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    
+    if (self.navigationController.navigationBarHidden) {
+        self.navigationController.navigationBarHidden = NO;
+    }
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    
+    self.title = merge_contact;
+    
+    if ([_dataMutArray count] == 0 || !_dataMutArray) {
+        [self setEmptyDateView:no_repeat_text];
+        return;
+    }
+    
+    self.tableViewHeaderString = merge_header_explain;
+    self.tableViewHeaderSize = [_tableViewHeaderString sizeWithFont:[UIFont systemFontOfSize:12.f] constrainedToSize:CGSizeMake(self.view.frame.size.width - 30, 100)];
+    
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, self.viewFrame.size.width, self.viewFrame.size.height) style:UITableViewStyleGrouped];
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:_tableView];
+}
+
+- (void)dealloc
+{
+    self.repeatBlock = nil;
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+- (void)reloadTableView:(NSArray *)mergeArray
+{
+    self.dataMutArray = [NSMutableArray arrayWithArray:mergeArray];
+    [self.tableView reloadData];
+    
+    MergeUserInfoViewController *mergeUserInfoViewController = (MergeUserInfoViewController *)[self.navigationController.viewControllers lastObject];
+    [mergeUserInfoViewController canPopViewController];
+}
+
+#pragma mark - tableview delegate
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return [_dataMutArray count];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    return 1;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    return 160 + 10;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section
+{
+    return _tableViewHeaderSize.height + 20;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section
+{
+    UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, _tableViewHeaderSize.height + 10)];
+    
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, view.frame.size.width - 30, _tableViewHeaderSize.height)];
+    label.textColor = A2_COLOR;
+    label.textAlignment = NSTextAlignmentLeft;
+    label.numberOfLines = 0;
+    label.font = [UIFont systemFontOfSize:12.f];
+    label.text = _tableViewHeaderString;
+    [view addSubview:label];
+    
+    return view;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cell"];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.backgroundColor = [UIColor clearColor];
+        
+        ConflictView *conflictView = [[ConflictView alloc] initWithFrame:CGRectMake(-1, 5, tableView.frame.size.width + 2, 160)];
+        conflictView.delegate = self;
+        conflictView.tag = CONFLICT_VIEW_TAG;
+        [cell.contentView addSubview:conflictView];
+    }
+    
+    ConflictView *conflictView = (ConflictView *)[cell.contentView viewWithTag:CONFLICT_VIEW_TAG];
+    [conflictView setMergeViewUserDict:[_dataMutArray objectAtIndex:indexPath.row]];
+    
+    return cell;
+}
+
+#pragma mark - conflictView delegate 
+
+- (void)conflictViewClicked:(ConflictView *)conflictView
+{
+//    [self showalertMessage:@"正在构建" cb:NULL];
+    
+    NSArray *contactsArray = conflictView.item.subSources;
+    
+    MergeUserInfoViewController *mergeUserInfoViewController = [[MergeUserInfoViewController alloc] initWithContacts:contactsArray];
+    [self.navigationController pushViewController:mergeUserInfoViewController animated:YES];
+    
+    __weak typeof(self) weakSelf = self;
+    [mergeUserInfoViewController setMergeBlock:^(){
+        [weakSelf hudShow:weakSelf.tableView msg:NULL];
+        
+        LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+        NSInteger hadCount = loginResult.doctorInfo.had_handle_repeat?[loginResult.doctorInfo.had_handle_repeat integerValue]:0;
+        NSInteger noCount = loginResult.doctorInfo.no_handle_repeat?[loginResult.doctorInfo.no_handle_repeat integerValue]:0;
+        
+        loginResult.doctorInfo.had_handle_repeat = [NSNumber numberWithInteger:(hadCount + 1)];
+        loginResult.doctorInfo.no_handle_repeat = [NSNumber numberWithInteger:(noCount > 0?(noCount - 1):0)];
+        [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+        
+        dispatch_async(dispatch_get_global_queue(0, 0), ^{
+            NSArray *array = [[SUCoreData sharedDB] two_fromat_tow:[[SUCoreData sharedDB] resperdic]];
+            weakSelf.dataMutArray = [NSMutableArray arrayWithArray:array];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (weakSelf.dataMutArray && [weakSelf.dataMutArray count] > 0) {
+                    [weakSelf hudClose];
+                    [weakSelf.tableView reloadData];
+                }else {
+                    [weakSelf.tableView removeFromSuperview];
+                    [weakSelf setEmptyDateView:no_repeat_text];
+                    
+                    if (self.repeatBlock) {
+                        self.repeatBlock();
+                    }
+                }
+            });
+        });
+        
+    }];
+}
+
+@end

@@ -1,0 +1,214 @@
+//
+//  ConflictContactViewController.m
+//  T2
+//
+//  Created by fuhailong on 14-12-29.
+//  Copyright (c) 2014年 xujunli. All rights reserved.
+//
+
+#define CONFLICT_VIEW_TAG 1000
+
+#import "ConflictContactViewController.h"
+#import "MatchingViewController.h"
+#import "ConflictView.h"
+
+@interface ConflictContactViewController () <UITableViewDataSource, UITableViewDelegate>
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSMutableArray *conflictMutArray;
+
+@property (nonatomic, strong) NSMutableArray *cellHeightMutArray;
+
+@property (nonatomic, strong) NSString *tableViewHeaderString;
+@property (nonatomic, assign) CGSize tableViewHeaderSize;
+
+@property (nonatomic, assign) NSInteger selectIndex;
+@end
+
+@implementation ConflictContactViewController
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    
+    if (self.navigationController.navigationBarHidden) {
+        self.navigationController.navigationBarHidden = NO;
+    }
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    
+    self.title = conflict_contact;
+    
+    self.tableViewHeaderString = conflict_explain;
+    self.tableViewHeaderSize = [_tableViewHeaderString sizeWithFont:[UIFont systemFontOfSize:12.f] constrainedToSize:CGSizeMake(self.view.frame.size.width - 30, 100)];
+    
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    NSInteger conflictsCount = loginResult.doctorInfo.no_handle_conflict?[loginResult.doctorInfo.no_handle_conflict integerValue]:0;
+    
+    if (conflictsCount > 0) {
+        [self getConflictData];
+    }else {
+        [self setEmptyDateView:no_conflict_text];
+    }
+}
+
+- (void)dealloc
+{
+    self.conflictBlock = nil;
+}
+
+- (void)createTableView
+{
+    self.cellHeightMutArray = [NSMutableArray array];
+    for (NSDictionary * dict in _conflictMutArray) {
+        NSArray *cidsArray = dict[@"cids"];
+        [_cellHeightMutArray addObject:[NSNumber numberWithFloat:([cidsArray count] * ONE_TEL_HEIGHT + INTERVAL * 2) + 5]];
+    }
+    
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.frame style:UITableViewStyleGrouped];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:_tableView];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+- (void)getConflictData
+{
+    __weak typeof(self) weakSelf = self;
+    [[_http http_conflictContactSync:@"0"] setResultBlock:^(BOOL isSuccess, id object) {
+        if (isSuccess) {
+            NSDictionary *dict = object;
+            NSArray *array = [dict objectForKey:@"contacts"];
+            weakSelf.conflictMutArray = [NSMutableArray arrayWithArray:array];
+            
+            if ([weakSelf.conflictMutArray count] > 0) {
+                [weakSelf createTableView];
+            }else {
+                [weakSelf setEmptyDateView:no_conflict_text];
+            }
+        }else {
+            [weakSelf setEmptyDateView:no_conflict_text];
+        }
+    }];
+}
+
+#pragma mark - taleview delegate
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return 1;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    return [_conflictMutArray count];
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    float height = [[_cellHeightMutArray objectAtIndex:indexPath.section] floatValue];
+    return height;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section
+{
+    if (section == 0) {
+        return _tableViewHeaderSize.height + 20;
+    }else {
+        return 10.f;
+    }
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section
+{
+    return 0.01f;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cell"];
+        cell.backgroundColor = [UIColor whiteColor];
+        
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        
+        ConflictView *conflictView = [[ConflictView alloc] initWithFrame:CGRectMake(-1, 0, tableView.frame.size.width + 2, [[_cellHeightMutArray objectAtIndex:indexPath.section] floatValue])];
+        conflictView.tag = CONFLICT_VIEW_TAG;
+        [cell.contentView addSubview:conflictView];
+    }
+    
+    float height = [[_cellHeightMutArray objectAtIndex:indexPath.section] floatValue];
+    
+    ConflictView *conflictView = (ConflictView *)[cell.contentView viewWithTag:CONFLICT_VIEW_TAG];
+    [conflictView setConflictViewUserDict:[_conflictMutArray objectAtIndex:indexPath.section] Height:height];
+    
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    self.selectIndex = indexPath.section;
+    
+    NSDictionary *userDict = [_conflictMutArray objectAtIndex:indexPath.row];
+    MatchingViewController *match = [[MatchingViewController alloc] initWithUserID:userDict[@"id"]];
+    [self.navigationController pushViewController:match animated:YES];
+    
+    __weak typeof(self) weakSelf = self;
+    [match setMathBlock:^(NSString *idStr){
+        for (NSDictionary* user in _conflictMutArray) {
+            if ([[user objectForKey:@"id"] isEqual:idStr]) {
+                [weakSelf.conflictMutArray removeObject:user];
+                
+                LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+                NSInteger hadCount = loginResult.doctorInfo.had_handle_conflict?[loginResult.doctorInfo.had_handle_conflict integerValue]:0;
+                
+                loginResult.doctorInfo.no_handle_conflict = [NSNumber numberWithInteger:[weakSelf.conflictMutArray count]];
+                loginResult.doctorInfo.had_handle_conflict = [NSNumber numberWithInteger:(hadCount + 1)];
+                [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+                
+                if ([weakSelf.conflictMutArray count] == 0) {
+                    [weakSelf.tableView removeFromSuperview];
+                    [weakSelf setEmptyDateView:no_conflict_text];
+                    
+                    if (weakSelf.conflictBlock) {
+                        weakSelf.conflictBlock();
+                    }
+                }else {
+                    [weakSelf.tableView deleteSections:[NSIndexSet indexSetWithIndex:weakSelf.selectIndex] withRowAnimation:UITableViewRowAnimationNone];
+                }
+                break;
+            }
+        }
+    }];
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section
+{
+    if (section == 0) {
+        UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.frame.size.width, _tableViewHeaderSize.height + 10)];
+        
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, view.frame.size.width - 30, _tableViewHeaderSize.height)];
+        label.textColor = A2_COLOR;
+        label.textAlignment = NSTextAlignmentLeft;
+        label.numberOfLines = 0;
+        label.font = [UIFont systemFontOfSize:12.f];
+        label.text = _tableViewHeaderString;
+        [view addSubview:label];
+        
+        return view;
+    }else {
+        return nil;
+    }
+}
+
+@end

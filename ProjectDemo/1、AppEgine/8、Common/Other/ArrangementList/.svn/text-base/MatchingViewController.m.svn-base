@@ -1,0 +1,172 @@
+//
+//  MatchingViewController.m
+//  T2
+//
+//  Created by fuhailong on 14-12-29.
+//  Copyright (c) 2014年 xujunli. All rights reserved.
+//
+
+#import "MatchingViewController.h"
+#import "UIImageView+WebCache.h"
+#import "MeTableViewCell.h"
+#import "LOHelp.h"
+
+@interface MatchingViewController () <UITableViewDataSource, UITableViewDelegate, UIAlertViewDelegate>
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSArray* userArray;
+@property (nonatomic, assign) NSInteger curSelectIndex;
+@property (nonatomic, strong) NSString *userID;
+@end
+
+@implementation MatchingViewController
+
+- (instancetype)initWithUserID:(NSString *)userID
+{
+    self = [super init];
+    
+    if (self) {
+        self.userID = userID;
+    }
+    
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    self.title = selection_matching;
+    
+    //获取冲突联系人信息
+    [self sendGetConflictList];
+}
+
+- (void)createTableView
+{
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.frame style:UITableViewStyleGrouped];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    [self.view addSubview:_tableView];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+#pragma mark - taleview delegate
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return [_userArray count];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    return 1;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    return THREE_ROW_CELL_HEIGHT;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section
+{
+    return 0.01f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section
+{
+    return 15.f;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    MeTableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cell"];
+    
+    if (!cell) {
+        cell = [[MeTableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cell"];
+    }
+    
+    NSDictionary *userDict = [_userArray objectAtIndex:indexPath.row];
+    LOPersonInfo *personInfo = [[LOPersonInfo alloc] init];
+    personInfo.userId = userDict[@"id"];
+    personInfo.username = userDict[@"username"];
+    personInfo.image = userDict[@"image"];
+    personInfo.company = userDict[@"company"];
+    personInfo.position = userDict[@"position"];
+    personInfo.sex = [NSNumber numberWithInteger:[userDict[@"sex"] integerValue]];
+    [cell updateMatchCell:personInfo];
+    
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    self.curSelectIndex = indexPath.row;
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:nil message:matching_explain delegate:self cancelButtonTitle:button_cancel otherButtonTitles:button_ok, nil];
+    [alert show];
+}
+
+#pragma mark - alert delegate
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+    if (buttonIndex == 1) {
+        NSDictionary* uesrDict = [_userArray objectAtIndex:_curSelectIndex];
+        [self sendAddAny:[uesrDict objectForKey:@"id"]];
+    }
+}
+
+#pragma mark - get Data
+
+-(void)sendGetConflictList
+{
+    [[_http http_conflictContactView:_userID] setResultBlock:^(BOOL isSuccess, id object) {
+        if (isSuccess) {
+            self.userArray = object;
+            
+            if ([_userArray count] > 0) {
+                [self createTableView];
+            }else {
+                [self setEmptyDateView];
+            }
+        }else {
+            [self setEmptyDateView];
+        }
+    }];
+}
+
+-(void)sendAddAny:(NSString*)cid
+{
+    [[_http http_conflictAddany:_userID cid:cid] setResultBlock:^(BOOL isSuccess, id object) {
+        if (isSuccess) {
+            if (self.mathBlock) {
+                self.mathBlock(_userID);
+            }
+            self.mathBlock = nil;
+            
+            NSDictionary *dict = object;
+            if (dict[@"contact"]) {
+                LOPersonInfo *personInfo = [[LOPersonInfo alloc] initWithDictionary:dict[@"contact"]];
+                [[SUCoreData sharedDB] saveFromPersonInfo:personInfo];
+            }
+            
+            [self.navigationController popViewControllerAnimated:YES];
+        }
+    }];
+}
+
+/*
+ #pragma mark - Navigation
+ 
+ // In a storyboard-based application, you will often want to do a little preparation before navigation
+ - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+ // Get the new view controller using [segue destinationViewController].
+ // Pass the selected object to the new view controller.
+ }
+ */
+
+@end

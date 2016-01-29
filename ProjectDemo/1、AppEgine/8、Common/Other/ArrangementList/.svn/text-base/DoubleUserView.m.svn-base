@@ -1,0 +1,63 @@
+//
+//  DoubleUserView.m
+//  T2
+//
+//  Created by lirongfeng on 15/2/5.
+//  Copyright (c) 2015年 locojoy. All rights reserved.
+//
+
+#import "DoubleUserView.h"
+
+@interface DoubleUserView ()
+@property (nonatomic, strong) UIImage *myImage;
+@end
+
+@implementation DoubleUserView
+
+//画虚线
+- (void)drawRect:(CGRect)rect
+{
+    /*
+    CGFloat dashPattern[]= {3.0, 2};
+    
+    CGContextRef context =UIGraphicsGetCurrentContext();
+    CGContextSetRGBStrokeColor(context, 1.0, 1.0, 1.0, 1.0);
+    // And draw with a blue fill color
+    CGContextSetRGBFillColor(context, 0.0, 0.0, 1.0, 1.0);
+    // Draw them with a 2.0 stroke width so they are a bit more visible.
+    CGContextSetLineWidth(context, 4.0);
+    CGContextSetLineDash(context, 0.0, dashPattern, 2);
+    
+    CGContextAddRect(context, rect);
+    CGContextStrokePath(context);
+    // Close the path
+    CGContextClosePath(context);
+    // Fill & stroke the path
+    CGContextDrawPath(context, kCGPathFillStroke);
+    */
+    
+    
+    if (!_myImage) {
+        CGFloat dashPattern[]= {10, 10};
+        UIGraphicsBeginImageContext(CGSizeMake(rect.size.width, rect.size.height));
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        CGContextSetLineWidth(context, 3.0);
+        //CGContextSetRGBStrokeColor(context, 42.f/255.f green:42.f/255.f blue:42.f/255.f, 1.0);
+        CGContextSetRGBStrokeColor(context,120.f/255.f,148.f/255.f,203.f/255.f,1.0f);
+        CGContextSetLineDash(context, 0.0, dashPattern, 2);
+        CGContextMoveToPoint(context, 0, 0);
+        CGContextAddLineToPoint(context, 0, rect.size.height);
+        CGContextAddLineToPoint(context, rect.size.width,  rect.size.height);
+        CGContextAddLineToPoint(context, rect.size.width, 0);
+        CGContextAddLineToPoint(context, 0, 0);
+
+        
+        CGContextStrokePath(context);
+        _myImage = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        
+        UIImageView* view = [[UIImageView alloc]initWithImage:_myImage];
+        [self addSubview:view];
+    }
+}
+@end

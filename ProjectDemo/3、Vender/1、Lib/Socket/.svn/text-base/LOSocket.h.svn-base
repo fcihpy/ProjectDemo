@@ -1,0 +1,34 @@
+//
+//  LOSocket.h
+//  YM
+//
+//  Created by t2 on 15/7/16.
+//  Copyright (c) 2015年 YM. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+#import "AsyncSocket.h"
+#import "Jastor.h"
+#import "NSString+JSONCategories.h"
+@interface LOStateObject : Jastor
+@property(nonatomic,strong) NSNumber *state;
+@property(nonatomic,strong) NSNumber *time;
+@property(nonatomic,strong) NSNumber *conflicts;
+@property(nonatomic,strong) NSString *username;
+@end
+
+@protocol LOSocektDelegate;
+@interface LOSocket : NSObject
+
+@property(nonatomic,strong) NSString *login_key;
+
+
+- (instancetype)initWithUid:(NSString *)uid withDelegate:(id<LOSocektDelegate>)delegate;
+- (void)connectHost:(NSString *)ip port:(NSUInteger)port;
+-(void) disconnect;
+@end
+
+@protocol LOSocektDelegate <NSObject>
+-(void) didReadState:(LOSocket *) socket object:(LOStateObject *)stateObject;
+-(void) didErrorCode:(LOSocket *) socket code:(NSInteger) code;
+@end

@@ -1,0 +1,13 @@
+//
+//  LOInitViewController.h
+//  YM
+//
+//  Created by t2 on 15/10/12.
+//  Copyright © 2015年 YM. All rights reserved.
+//
+
+#import "LOBaseViewController.h"
+
+@interface LOInitViewController : LOBaseViewController
+
+@end

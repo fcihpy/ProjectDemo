@@ -1,0 +1,229 @@
+//
+//  IHttpRequest.m
+//  IHttpRequest
+//
+//  Created by sunjun on 13-6-11.
+//  Copyright (c) 2013年 sunjun. All rights reserved.
+//
+
+#import "IHttpRequest.h"
+#import "HttpInfo.h"
+#import "MAppHttp.h"
+#import "SaveMyInfo.h"
+#include "encdecutils.h"
+@interface IHttpRequest()
+{
+    NSMutableArray *_requestObjs;
+    NSLock         *_reLock;
+    dispatch_queue_t  _queue;
+}
+
+@end
+
+@implementation IHttpRequest
+#pragma maket request moneth
+
+- (void)dealloc
+{
+    [self cancelAll];
+    if(_queue){
+        _queue=nil;
+    }
+}
+-(void) addRequestId:(RequestID *) requestId
+{
+    [_reLock lock];
+    [_requestObjs addObject:requestId];
+    [_reLock unlock];
+}
+
+
+-(RequestID *) currentRequestId
+{
+    RequestID *rid = nil;
+    [_reLock lock];
+    if(_requestObjs.count > 0)
+    {
+        rid = [_requestObjs lastObject];
+    }
+    [_reLock unlock];
+    return rid;
+}
+
++(id) IhttpRequestWithDelegate:(id<IHttpRequestDelegate>) targets
+{
+    return [[[self class] alloc] initIHttpRequestWithDelegate:targets];
+}
+
+-(id) initIHttpRequestWithDelegate:(id<IHttpRequestDelegate>) targets
+{
+    self = [super init];
+    if(self){
+        _nextId = 0;
+        _requestObjs = [[NSMutableArray alloc] init];
+        _reLock = [[NSLock alloc] init];
+        _delegate = targets;
+    }
+    return self;
+}
+
+-(void) cancel:(RequestID *) requestId
+{
+    if(requestId==nil) return;
+    [_reLock lock];
+    AFHTTPRequestOperation *afrequest = requestId.object;
+    [afrequest setCompletionBlockWithSuccess:nil failure:nil];
+    [afrequest cancel];
+    [_requestObjs removeObject:requestId];
+    [_reLock unlock];
+}
+
+-(RequestID *) fineRequestId:(AFHTTPRequestOperation *)request
+{
+    NSString *name = request.userInfo[@"name"];
+    NSNumber *idtag = request.userInfo[@"idtag"];
+    for (RequestID *rid in _requestObjs) {
+        if ([rid.name isEqualToString:name] && (request.tag == rid.type) && [idtag isEqualToNumber:rid.idTag]) {
+            return rid;
+        }
+    }
+    return nil;
+}
+
+-(void) cancelAll
+{
+    [_reLock lock];
+    for (RequestID *rid in _requestObjs) {
+        AFHTTPRequestOperation *afrequest = rid.object;
+        [afrequest setCompletionBlockWithSuccess:nil failure:nil];
+        [afrequest cancel];
+    }
+    _delegate = nil;
+    [_requestObjs removeAllObjects];
+    [_reLock unlock];
+}
+
+-(id) httpRequestAsynPost:(NSUInteger) type data:(id)param
+{
+    return param;
+}
+
+-(id) httpRequestAsynGet:(NSUInteger) type data:(NSDictionary *)dic
+{
+    return dic;
+}
+
+-(NSData *)encdecutils_encode:(NSData *)data
+{
+    NSString *eakey = [[SaveMyInfo shareSaveMyInfo] getLoginResult].secretkey;
+    if (STRISEMPTY(eakey)) {
+        return data;
+    }
+    uint8_t *ebuf, key[43], *buf; int klen = 43,elen,len = (int)data.length;
+    [eakey getCString:(char *)key maxLength:klen encoding:NSUTF8StringEncoding];
+    buf = (uint8_t *)encdecutils_malloc((int)data.length);
+    [data getBytes:buf];
+    elen = encdecutils_encode(buf, len, key, klen, &ebuf);
+    NSData *rdata = [NSData dataWithBytes:ebuf length:elen];
+    encdecutils_free(buf);
+    encdecutils_free(ebuf);
+    return rdata;
+}
+
+- (void)requestFinished:(AFHTTPRequestOperation *)requestObject
+{
+    if(_queue == nil){
+        _queue = dispatch_queue_create("httpQueue", nil);
+    }
+    __block __weak typeof(self)weak = self;
+    dispatch_async(_queue, ^{ //requestObject.userInfo[@"rid"]
+        RequestID *requestId = [weak fineRequestId:requestObject];
+        if (requestId.type == Http_userQrCode || requestId.type == http_thirdLogin_bindCheck || requestId.type == http_thirdLogin_bindCommit) {
+            [weak notifySuccess:[requestObject responseData] requestId:requestId];
+        }else{
+            NSString *strValue =[requestObject responseString];
+            NSData* data=[strValue dataUsingEncoding:requestObject.responseStringEncoding];
+            id dict=[NSJSONSerialization  JSONObjectWithData:data options:0 error:nil];
+        
+            DLog(@"接收消息[%@]---json=%@",[[HttpMethod sharedMethod] typeMethod:requestId.type],strValue);
+            LOError *err = [weak checkIsSuccess:dict type:requestId.type];
+            if(nil == err){
+                [weak notifySuccess:[weak analyProtocol:dict type:requestId.type] requestId:requestId];
+            }else{
+                [weak notifyError:err requestId:requestId];
+            }
+        }
+        [weak cancel:requestId];
+    });
+}
+
+- (void)requestFailed:(AFHTTPRequestOperation *)requestObject
+{
+    RequestID *rid = [self fineRequestId:requestObject];
+    //NSError *error = [requestObject error];
+    LOError *loerror = MAKE_ERROR(NET_TIMEOUT, NET_ERROR_CODE);
+    if(self.delegate && [self.delegate respondsToSelector:@selector(HttpFailedRequest:requestId:error:)]){
+        [self.delegate HttpFailedRequest:self requestId:rid error:loerror];
+    }
+    if (rid.resultBlock) {
+        rid.resultBlock(NO,loerror);
+    }
+    
+    [self cancel:rid];
+}
+
+- (void)requestStarted:(AFHTTPRequestOperation *)requestObject
+{
+    if(_delegate && [_delegate respondsToSelector:@selector(HttpStartRequest:requestId:)])
+    {
+        RequestID *rid = [self fineRequestId:requestObject];
+        [_delegate HttpStartRequest:self requestId:rid];
+    }
+}
+
+
+-(void) analysisResponse:(AFHTTPRequestOperation *)request// requestId:(RequestID *)requestId
+{
+    
+}
+-(void) notifySuccess:(id) sucMsg requestId:(RequestID *)requestId
+{
+    __block __weak  IHttpRequest *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        
+        if (requestId.resultBlock) {
+            requestId.resultBlock(YES,sucMsg);
+        }
+        if(weakSelf.delegate && [weakSelf.delegate respondsToSelector:@selector(HttpFinishRequest:requestId:msg:)]){
+            [weakSelf.delegate HttpFinishRequest:weakSelf requestId:requestId msg:sucMsg];
+        }
+        
+    });
+}
+
+-(void) notifyError:(LOError *) error requestId:(RequestID *)requestId
+{
+    __block __weak  IHttpRequest *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if(weakSelf.delegate && [weakSelf.delegate respondsToSelector:@selector(HttpFailedRequest:requestId:error:)]){
+            [weakSelf.delegate HttpFailedRequest:weakSelf requestId:requestId error:error];
+        }
+        if (requestId.resultBlock) {
+            requestId.resultBlock(NO,error);
+        }
+    });
+}
+
+
+-(id) analyProtocol:(NSDictionary *)dic type:(NSUInteger)type
+{
+    return dic;
+}
+
+-(id) checkIsSuccess:(NSDictionary *)dic type:(NSUInteger)type
+{
+    return MAKE_ERROR(@"", 0);
+}
+
+
+@end

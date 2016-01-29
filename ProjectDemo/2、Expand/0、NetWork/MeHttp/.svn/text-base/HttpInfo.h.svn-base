@@ -1,0 +1,199 @@
+//
+//  HttpInfo.h
+//  GFMusic
+//
+//  Created by jiayitang on 13-10-10.
+//  Copyright (c) 2013年 jiayitang. All rights reserved.
+//
+
+#import "Jastor.h"
+
+typedef NS_ENUM(NSInteger, HTTPTYPE) {
+    HTTP_BEGIN = -1,
+
+    Http_login,            //登录         0
+    Http_smsVerify,        //短信验证
+    Http_emailVerify,        //邮箱验证
+    Http_checkCode,        //校验码验证
+    Http_sendSms ,         //发送短信消息
+    Http_bind,             //重新绑定
+    Http_FindPassword,     //找回密码
+    Http_Register,         //用户注册
+    Http_logout,           // 用户退出
+    Http_userEdit,          //用户资料编辑      9
+    
+    Http_userSync,          //同步用户资料
+    Http_userView,          //查看陌生人资料
+    Http_userprivacy,       //查看用户隐私
+    Http_labelAdd,           //新增标签(注册)
+    Http_labelDelete,         //删除标签(注册)
+    Http_labelView,           //查看标签(注册)
+    Http_labelSync,           //同步标签(注册)
+    Http_labelClick,           //点击标签(注册)
+    Http_jobAdd,               //新增工作经历
+    Http_jobDelete,            //删除工作经历    19
+    Http_jobEdit,              //编辑工作经历
+    Http_jobSync,               //同步工作经历
+    Http_educationAdd,         //新增教育经历
+    Http_educationDelete,       //删除教育经历
+    Http_educationEdit,         //编辑教育经历
+    Http_educationSync,         //同步教育经历
+    Http_remarkAdd,            //新增评论
+    Http_remarkDelete,         //删除评论
+    Http_remarkView,           //查看评论
+    Http_blackAdd,             //加入黑名单      29
+    Http_blackDelete,          //撤销黑名单
+    Http_blackView,            //查看黑名单
+    Http_cardAdd,             //添加名片申请
+    Http_addContactd,         //添加联系人并申请加好友
+    Http_cardgiveto,          //给他名片
+    Http_cardAddFrom,         //加他名片
+    Http_cardDelete,          //取消名片申请
+    Http_cardSync,            //同步名片申请
+    Http_userStateSync,       //同步用户状态（红点）
+    Http_changeSync,          //同步好友动态         39
+    Http_userVisitSync,          //同步我的访客
+    Http_userVisitRedImageCancel,          //我的访客红点消除
+    Http_userChangeSync,       //同步个人动态
+    Http_userChangeDeleteSync, //删除个人动态
+    Http_userfeedback,         //用户反馈
+    Http_userQrCode,           //生成二维码
+    Http_userType,             //获取用户类型      45
+    Http_userViewinfo,         //查看陌生人或联系人详情资料
+    Http_userRecommend,         //推荐用户列表
+    Http_userRecommendDelete,   //推荐用户屏蔽
+    
+    
+    Http_userRecommendNewList,  //推荐用户列表--新接口
+    Http_userIgnoreNew,            //忽略推荐的用户 -- 新接口
+    Http_userseeNew,            //取消红点 -- 新接口
+    Http_NlabelAdd,           //新增标签（非注册）
+    Http_NlabelView,           //查看标签（非注册）
+    Http_NlabelSync,           //同步标签（非注册）
+    Http_NlabelClick,           //点击标签（非注册）  50
+    
+    Http_groupAdd,           //新增群组
+    Http_groupEdit,           //编辑群组
+    Http_groupEditContact,      //编辑联系人群组
+    Http_groupDelete,           //删除群组
+    Http_groupSync,           //同步群组            55
+    Http_uploadContacts,     //上传联系人列表
+    Http_SyncContacts,       //同步联系人列表
+    Http_contactAdd,        //添加联系人
+    Http_contactEdit,       //编辑联系人
+    Http_contactDelete,     //删除联系人             60
+    Http_contactView,       //查看联系人资料
+    Http_contactViewShae,   //查看分享联系人资料
+    Http_contactMessageSet,    //消息设置联系人资料
+    Http_contactAddUser,      //添加用户为联系人
+    Http_contactAddMobile,    //添加号码为联系人
+    Http_conflictSync,       //同步冲突联系人列表
+    Http_conflictView,      //查看冲突联系人冲突信息
+    Http_conflictAddto,     //冲突联系人转新建联系人
+    Http_conflictAddany,    //冲突联系人转任意联系人
+    Http_conflictDelete,     //删除冲突联系人         70
+
+    Http_xyposUpload,       //上传位置
+    Http_xyposDelete,       //取消位置
+    Http_findQuake,         //摇一摇发现
+    Http_findNear,          //附近发现
+    
+    Http_findAddGroup,     //加入群换组
+    Http_findSyncGroup,     //同步群换组
+    Http_findExitGroup,     //退出群换组
+    Http_userSearch,        //陌生人搜索            78
+    
+    
+    Http_contactSfriend,    //查看共同好友列表
+    Http_contactShareinfo,  //查看推荐备注
+    Http_findQuakeSync,  //查看递名片的历史数据
+    Http_findQuakeDelete,  //删除递名片的历史数据
+    
+    Http_searchCompany,  //搜索公司
+    Http_searchSchool,  //搜索学校
+    Http_selectEducation,  //选择学历
+    Http_selectWork,    //选择工作
+    Http_jobSelect,     //选取工作经历 (用于点击选择已录入好的工作经历)
+    Http_eduSelect,     //选取教育经历 (用于点击选择已录入好的教育经历)
+    
+    Http_circle,         //用户圈子                 88
+    Http_circleView,     //查看圈子
+    /*群聊天部分*/
+    Http_chatGroupCreate,  //创建群组
+    Http_chatGroupEdit,    //编辑群组
+    Http_chatGroupSync,    //同步群组
+    Http_chatGroupExit,    //退出群组
+    Http_chatGroupList,  //获取群聊列表
+    Http_chatGoupInfo,  //获取群信息
+    //资源更新检查
+    Http_resCheck,          //资源检查更新
+    
+    Http_uploadServer,   //上传通话记录
+    
+    Http_UserbirthsSync,  //生日提醒推荐同步
+    
+    Http_applyExchange,     //交换名片  原 给他名片 与 加他名片 接口合在一起后的接口
+    
+    Http_searchAll,        //综合搜索
+    Http_sendToken,        //给服务器发送 推送 token
+    Http_syncCmatch,       //同步匹配列表
+    Http_viewFriend,       //查看搜索好友资料
+    Http_smsApply,       //名片申请短信
+    
+    Http_feedback,        //用户反馈
+    Http_getVersion,      //获取版本信息
+    Http_getConfig,       //获取版本配置文件
+    Http_createBackup,      //创建备份
+    Http_deleteBackup,      //删除备份
+    Http_restoreBackup,      //恢复备份
+    Http_syncBackup,      //同步联系人备份
+    Http_contactAddContact,      //添加分享名片为联系人
+    Http_advert,            //广告来源
+    
+    
+    //thirdLogin  第三登录
+    http_thirdLogin_bindCheck,      //检查第三方账号是否和账户绑定过
+    
+    http_thirdLogin_bindCommit,     //第三方账户注册成功后，绑定第三方账户
+    http_thirdLogin_unBind,         //第三方账户注册成功后，解绑
+    http_thirdLogin_uploadHeadImage,//第三方账户注册成功后，上传头像
+    http_thirdLogin_loginDetail,    //第三方账户注册成功后，获取用户信息
+    
+    http_mergeUser,    //合并联系人
+    http_deviceInfo,    //发送设备信息
+    http_changeUsersync,    //同步单一好友动态
+    HTTPTYPE_END,
+};
+
+
+typedef NS_ENUM(NSInteger, thirdPlatType) {
+    
+    thirdPlatTypeQQ,
+    thirdPlatTypeWeChat,
+    thirdPlatTypeWeobo,
+    
+};
+
+typedef NS_ENUM(NSInteger, HttpRequestType) {
+    HttpRequestTypePost,
+    HttpRequestTypeGet,
+};
+
+@interface HttpInfo : Jastor
+@property(nonatomic,strong) NSString *className;
+@property(nonatomic,strong) NSString *httpMethod;
+@property(nonatomic,strong) NSNumber *httpType;
+@property(nonatomic,strong) NSNumber *scheme;  //YES--https--不需要加密   NO-- http--加密
+-(id) initWithInfo:(NSString *)cn method:(NSString *)method type:(HTTPTYPE)htype scheme:(BOOL) scheme;
+@end
+
+@interface HttpMethod : NSObject
+@property(nonatomic,copy) NSString *loginKey;
++(HttpMethod *) sharedMethod;
+-(Class) typeClass:(HTTPTYPE )type;
+-(NSString *)typeMethod:(HTTPTYPE)type;
+-(BOOL) scheme:(HTTPTYPE)type;
+-(NSString *) errorText:(NSInteger)code;
+
+-(BOOL) isHttps:(HTTPTYPE) type;
+@end

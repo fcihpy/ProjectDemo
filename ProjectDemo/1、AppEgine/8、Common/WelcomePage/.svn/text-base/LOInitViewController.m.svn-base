@@ -1,0 +1,218 @@
+//
+//  LOInitViewController.m
+//  YM
+//
+//  Created by t2 on 15/10/12.
+//  Copyright © 2015年 YM. All rights reserved.
+//
+
+#import "LOInitViewController.h"
+#import "UIImage+Color.h"
+#import "LOPageViewController.h"
+#import "EaseLogin.h"
+#import "EaseMobHeaders.h"
+#import "AppDelegate.h"
+#import "LoginByPwdViewController.h"
+#import "FirstLoginViewController.h"
+#import "PXAlertView.h"
+@interface LOluanch : NSObject
+
+@end
+
+
+@implementation LOluanch
++(CGSize) luanchSize:(NSString *)strSize
+{
+    CGSize screenSize = [[UIScreen mainScreen] bounds].size;
+    NSArray *arr = [strSize componentsSeparatedByString:@","];
+    for (int i  = 0; i < arr.count; i++) {
+        NSString *os = arr[i];
+        NSString *newString = [os stringByReplacingOccurrencesOfString:@"{" withString:@""];
+        newString = [newString stringByReplacingOccurrencesOfString:@"}" withString:@""];
+        if (i == 0) {
+            screenSize.width = [newString floatValue];
+        }else{
+            screenSize.height = [newString floatValue];
+        }
+    }
+    return screenSize;
+}
+
++(NSString*)getLaunchImageName
+{
+    NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+    NSArray *lauchs  = infoDictionary[@"UILaunchImages"];
+    NSMutableArray *lauchImages = [[NSMutableArray alloc] init];
+    CGSize screenSize = [[UIScreen mainScreen] bounds].size;
+    for (NSDictionary *dic in lauchs) {
+        NSString *name = dic[@"UILaunchImageName"];
+        NSString *strSize = dic[@"UILaunchImageSize"];
+        CGSize size = [[self class] luanchSize:strSize];
+        if (size.height == screenSize.height) {
+            return name;
+        }
+    
+        [lauchImages addObject:name];
+        
+    }
+    if (screenSize.height == 480)
+    {
+        return lauchImages[2];
+    }
+    else if (screenSize.height > 480 && screenSize.height <= 568)
+    {
+        //{320, 568}
+        return lauchImages[3];
+        
+    }else if(screenSize.height > 568 && screenSize.height <= 667)
+    {
+        return lauchImages[1];
+        
+    }else {
+        return lauchImages[0];
+    }
+}
+
+
+@end
+
+
+@interface LOInitViewController ()
+
+@end
+
+@implementation LOInitViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    NSString *filePath = [[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:[LOluanch getLaunchImageName]];
+    UIImage *image = [UIImage imageWithContentsOfFile:filePath];
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+    imageView.image = image;
+    [self.view addSubview:imageView];
+   
+    [self performSelector:@selector(subafterProFun) withObject:nil afterDelay:0.1];
+}
+
+-(void) subafterProFun
+{
+    [self checkGetConfig:nil];
+ }
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+-(void) infotoApp
+{
+    NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+    if (![userDefaults objectForKey:@"welcome"]) {
+        [self createWelcomeView];
+    }else {
+        [self enterMainView];
+    }
+}
+
+-(void)  checkGetConfig:(void (^)(void)) compation
+{
+    __block typeof(self) bself = self;
+    [[_http getConfig:@""] setResultBlock:^(BOOL isSuccess, id object)
+     {
+         if (isSuccess) {
+             LOConfigData *model = object;
+             [[LOConfigModel sharedConfigModel] setConfig:model.config];
+             [bself performSelector:@selector(showUpdateVersion:) withObject:model.version afterDelay:0.1f];
+         }else{
+             [bself performSelector:@selector(showUpdateVersion:) withObject:nil afterDelay:0.1f];
+         }
+     }];
+    
+}
+
+-(void) showUpdateVersion:(UPVersion *) obj
+{
+     [_http sendDeviceInfo];
+#if IS_TOAPPSTORE
+    [self infotoApp];
+#else
+    if (obj && [obj isKindOfClass:[UPVersion class]]) {
+        UPVersion *ver = obj;
+        NSInteger vtype = [ver.v_type integerValue];
+        NSMutableString *infos = [[NSMutableString alloc] init];
+        [infos appendFormat:@"版本:%@\n大小:%@\n更新时间:%@\n",ver.v_no,ver.v_size,ver.v_starttime];
+        [infos appendFormat:@"\n更新内容:\n%@",ver.v_info];
+        UIView *view = [LOPublic updateCustView:ver];
+        NSString *url = ver.v_url;
+        if (![url hasPrefix:@"http"]) {
+            url = [@"http://" stringByAppendingString:ver.v_url];
+        }
+        
+        if (vtype == 2) {
+            [PXAlertView showAlertWithTitle:@"提醒" message:nil cancelTitle:@"强制更新" otherTitle:nil contentView:view completion:^(BOOL cancelled) {
+                [[UIApplication sharedApplication] openURL:[NSURL URLWithString:url]];
+            }];
+        }else if(vtype ==  1){
+            [PXAlertView showAlertWithTitle:@"提醒" message:nil cancelTitle:@"以后在说" otherTitle:@"现在更新" contentView:view completion:^(BOOL cancelled) {
+                if (!cancelled) {
+                    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:url]];
+                }else{
+                    [self infotoApp];
+                }
+            }];
+        }else{
+            [self infotoApp];
+        }
+    }else{
+        [self infotoApp];
+    }
+#endif
+}
+
+
+
+-(void) createWelcomeView
+{
+    LOPageViewController *pageViewController = [[LOPageViewController alloc] initWithNibName:nil bundle:nil];
+    __block __weak typeof(self) weakSelf = self;
+    pageViewController.didSelectedEnter = ^() {
+        NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+        [userDefaults setObject:@"1" forKey:@"welcome"];
+        [weakSelf enterMainView];
+    };
+    [self presentViewController:pageViewController animated:NO completion:nil];
+}
+
+
+-(void) enterMainView
+{
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+     AppDelegate *meApp = (AppDelegate *)[UIApplication sharedApplication].delegate;
+    if (IS_NOT_EMPTY(loginResult.login_key) && IS_NOT_EMPTY(loginResult.user.username) && loginResult.uptime && loginResult.user.sex && [loginResult.user.sex integerValue] > 0)
+    {
+        [EaseLogin easeModLoginNotSync:loginResult.user.userId  password:loginResult.user.password  error:nil completion:^(BOOL success) {
+            if (!success) {
+ 
+                
+            }else{
+                
+                [self dismissViewControllerAnimated:NO completion:nil];
+                [meApp gotoMainRootViewController];
+            }
+        }];
+        
+    }else {
+        if (IS_NOT_EMPTY(loginResult.accountInfo.account)) {
+            LoginByPwdViewController *loginViewController = [[LoginByPwdViewController alloc] init];
+            [meApp gotoRootViewController:loginViewController];
+        }else {
+            FirstLoginViewController *firstLoginViewController = [[FirstLoginViewController alloc] init];
+            [meApp gotoRootViewController:firstLoginViewController];
+        }
+    }
+}
+
+
+
+@end

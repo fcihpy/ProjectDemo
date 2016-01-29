@@ -1,0 +1,1651 @@
+//
+//  MAppHttp.m
+//  MHTTPRequestTest
+//
+//  Created by sunjun on 13-6-11.
+//  Copyright (c) 2013年 sunjun. All rights reserved.
+//
+
+#import "MAppHttp.h"
+#import "ResourceManager.h"
+#import "SaveMyInfo.h"
+#import "LODataCentre.h"
+#import <ShareSDK/ShareSDK.h>
+#import <ShareSDKExtension/SSEThirdPartyLoginHelper.h>
+#import <ShareSDKExtension/SSEBaseUser.h>
+#include "encdecutils.h"
+#import "NSString+JSONCategories.h"
+#import "UIDevice+LO.h"
+#import "OpenUDID.h"
+#import "MBProgressHUD.h"
+
+static NSData *httpEncdecutils_encode(NSData *data)
+{
+    NSString *eakey = [[SaveMyInfo shareSaveMyInfo] getLoginResult].secretkey;
+    if (STRISEMPTY(eakey)) {
+        return data;
+    }
+    uint8_t *ebuf, *buf, key[43]; int elen = 0;
+    const char *ekutf = [eakey UTF8String];
+    memcpy(key, ekutf, 43); NSData *rdata = nil;
+    if (data == nil) {
+        elen = encdecutils_encode(nil, 0, key, 43, &ebuf);
+       rdata = [NSData dataWithBytes:ebuf length:elen];
+    }else{
+        int klen = (int)eakey.length;int len = (int)data.length;
+        
+        buf = (uint8_t *)encdecutils_malloc((int)data.length);
+        [data getBytes:buf];
+        elen = encdecutils_encode(buf, len, key, klen, &ebuf);
+        rdata = [NSData dataWithBytes:ebuf length:elen];
+        encdecutils_free(buf);
+    
+    }
+    encdecutils_free(ebuf);
+    return rdata;
+
+}
+
+static NSDictionary *httpEncdecutils_decode(NSString *source)
+{
+
+    NSString *eakey = [[SaveMyInfo shareSaveMyInfo] getLoginResult].secretkey;
+    if (STRISEMPTY(eakey)) {
+        return nil;
+    }
+    int elen = (int)source.length, dlen,klen = (int) eakey.length;
+    uint8_t *ebuf = (uint8_t *)[source UTF8String];
+    uint8_t key[43] , *dbuf;
+   
+    const char *ekutf = [eakey UTF8String];
+    memcpy(key, ekutf, klen );
+    
+    dlen = encdecutils_decode(ebuf, elen, key, klen, &dbuf);
+    //dbuf[dlen] = 0;
+    NSDictionary *rdic = nil;
+    if (dlen > 0 && dbuf) {
+         NSData *rdata = [NSData dataWithBytes:dbuf length:dlen];
+        rdic = [NSJSONSerialization  JSONObjectWithData:rdata options:0 error:nil];
+    }
+    if (dbuf) {
+        encdecutils_free(dbuf);
+    }
+    
+    return rdic;
+}
+                                  
+
+#define from_data_append(m_htype)\
+if (![[HttpMethod sharedMethod] scheme:m_htype]) {\
+    NSData* data = httpEncdecutils_encode(nil);\
+    [formData appendPartWithFormData:data name:@"param"];\
+}
+
+
+
+@implementation MAppHttpJson
+
+- (id)responseObjectForResponse:(NSURLResponse *)response
+                           data:(NSData *)data
+                          error:(NSError *__autoreleasing *)error
+{
+    return data;
+}
+
+@end
+
+@interface MAppHttp(){
+    NSString *_uuid;
+    MBProgressHUD   *_mbProgressHud;
+}
+
+@end
+@implementation MAppHttp
+-(id) initIHttpRequestWithDelegate:(id<IHttpRequestDelegate>)targets
+{
+    self = [super initIHttpRequestWithDelegate:targets];
+    if(self){
+    
+    }
+    return self;
+}
+
+//登陆接口
+-(RequestID *) http_login:(NSString *)param password:(NSString *)password type:(HttpLoginType) type
+{
+    NSString *key = @"id";
+    if (type == user_phoneNumber) {
+        key = @"mobile";
+    }else if (type == user_code){
+        key = @"usercode";
+    }else if (type == user_email){
+        key = @"email";
+    }
+    NSMutableDictionary *dic = [@{@"password":password,key:param} mutableCopy];
+    [dic setObject:[NSString stringWithFormat:@"IOS-%@-%@-%@", [[UIDevice currentDevice]systemVersion],[[UIDevice currentDevice] fcDeviceType],APP_VERSION] forKey:@"device"];
+    
+    return [self httpRequestAsynPost:Http_login data:dic];
+}
+//短信验证
+-(RequestID *) http_smsVerify:(NSString *)mobile verifty:(VerifyType) type{
+    return [self httpRequestAsynPost:Http_smsVerify data:@{@"mobile":mobile,@"verifyType":[NSString stringWithFormat:@"%ld",type]}];
+}
+
+//邮箱验证
+-(RequestID *) http_emailVerify:(NSString *)email verifty:(VerifyType) type{
+    return [self httpRequestAsynPost:Http_emailVerify data:@{@"email":email,@"verifyType":[NSString stringWithFormat:@"%ld",type]}];
+}
+
+//验证校验码 mobile - email 二者选择传一个参数
+-(RequestID *) http_userVerify:(NSString *)mobile email:(NSString *)email verityCode:(NSString *)code{
+    NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+    if (!STRISEMPTY(mobile)) {
+        [dic setObject:mobile forKey:@"mobile"];
+    }else if (!STRISEMPTY(email)) {
+        [dic setObject:email forKey:@"email"];
+    }
+    [dic setObject:code forKey:@"verify"];
+    return [self httpRequestAsynPost:Http_checkCode data:dic];
+}
+
+//向指定联系人发送短信消息
+-(RequestID *) http_sendSms:(NSString *)contactId content:(NSString *)text
+{
+    return [self httpRequestAsynPost:Http_sendSms data:@{@"id":contactId,@"content":text}];
+}
+
+//重新绑定  mobile - email 二者选择传一个参数
+-(RequestID *) http_userBind:(NSString *)mobile email:(NSString *)email verityCode:(NSString *)code
+{
+    NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+    if (STRISEMPTY(mobile)) {
+        [dic setObject:mobile forKey:@"mobile"];
+    }else if (STRISEMPTY(email)) {
+        [dic setObject:email forKey:@"email"];
+    }
+    [dic setObject:code forKey:@"verify"];
+    return [self httpRequestAsynPost:Http_bind data:dic];
+}
+
+//找回密码
+-(RequestID *) http_userPassword:(NSString *)newPassword verify:(NSString *)verify verifyKey:(NSString *)verifykey
+{
+    return [self httpRequestAsynPost:Http_FindPassword data:@{@"password":newPassword,@"verify":verify,@"verifyKey":verifykey}];
+}
+
+//用户注册
+-(RequestID *) http_userRegister:(NSDictionary *)dict {
+    return [self httpRequestAsynPost:Http_Register data:dict];
+}
+
+//退出登录
+-(RequestID *) http_userLogout{
+    return [self httpRequestAsynPost:Http_logout data:nil];
+}
+
+//编辑用户资料
+-(RequestID *) http_userEdit:(NSDictionary *)param  image:(NSData *)imageData{
+    return [self  httpRequestAsyns:Http_userEdit method:@"POST" constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        if (param && [param isKindOfClass:[NSDictionary class]]) {
+            NSString *bodyString = [param JSONString];
+            NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+            if (![[HttpMethod sharedMethod] scheme:Http_userEdit]) {
+                data = httpEncdecutils_encode(data);
+            }
+            [formData appendPartWithFormData:data name:@"param"];
+        }else if (param == nil){
+            
+            from_data_append(Http_userEdit);
+        }
+        if (imageData && [imageData isKindOfClass:[NSData class]]) {
+              [formData appendPartWithFileData:imageData name:@"image" fileName:@"ap.png" mimeType:@"image/jpeg"];
+            
+        }
+        
+    }];
+}
+
+//同步用户资料
+-(RequestID *) http_userSync:(NSString *)time{
+    return [self httpRequestAsynPost:Http_userSync data:@{@"time":(time)?time:@"0"}];
+}
+
+//查看陌生人资料
+-(RequestID *) http_userView:(NSString *)userId time:(NSString *)time{
+    return [self httpRequestAsynPost:Http_userView data:@{@"id":userId,@"time":(time)?time:@"0"}];
+}
+
+//查看用户隐私
+-(RequestID *) http_userPrivacy:(NSString *)time{
+    return [self httpRequestAsynPost:Http_userprivacy data:@{@"time":(time)?time:@"0"}];
+}
+
+//新增标签（注册）
+-(RequestID *) http_labelAdd:(NSString *)userId labelName:(NSString *)labelName{
+    return [self httpRequestAsynPost:Http_labelAdd data:@{@"uid":userId,@"name":labelName}];
+}
+
+//删除标签（注册）
+-(RequestID *) http_labelDelete:(NSArray *)labelIds{
+    return [self httpRequestAsynPost:Http_labelDelete data:labelIds];
+}
+
+//查看标签（注册）
+-(RequestID *) http_labelView:(NSString *)userId time:(NSString *)time count:(NSInteger) count{
+    return [self httpRequestAsynPost:Http_labelView data:@{@"uid":userId,@"time":time?time:@"0",@"count":[NSNumber numberWithInteger:count]}];
+}
+
+//同步标签（注册）
+-(RequestID *) http_labelSync:(NSString *)userId{
+    return [self httpRequestAsynPost:Http_labelSync data:@{@"uid":userId}];
+}
+//点击标签（注册）
+-(RequestID *) http_labelClick:(NSString *)userId labelId:(NSString *)labelId{
+    return [self httpRequestAsynPost:Http_labelClick data:@{@"uid":userId,@"id":labelId}];
+}
+
+//新增工作经历
+-(RequestID *) http_jobAdd:(JobItem *)jobItem{
+    return [self httpRequestAsynPost:Http_jobAdd data:[jobItem toDictionary]];
+}
+
+//编辑工作经历
+-(RequestID *) http_jobEdit:(JobItem *)jobItem{
+    return [self httpRequestAsynPost:Http_jobEdit data:[jobItem toDictionary]];
+}
+
+//删除工作经历
+-(RequestID *) http_jobDelete:(NSString *)jobId selected:(NSString *)selected nid:(NSString *)nid IsDefJob:(BOOL)isDefJob{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:jobId forKey:@"id"];
+    if (IS_NOT_EMPTY(selected)) {
+        [mutDict setObject:selected forKey:@"selected"];
+        if (IS_NOT_EMPTY(nid)) {
+            [mutDict setObject:nid forKey:@"nid"];
+        }
+        
+        [mutDict setObject:isDefJob?@"1":@"2" forKey:@"type"];
+    }
+    return [self httpRequestAsynPost:Http_jobDelete data:@[mutDict]];
+}
+
+//同步工作经历
+-(RequestID *) http_jobSync{
+    return [self httpRequestAsynPost:Http_jobSync data:nil];
+}
+
+//新增教育经历
+-(RequestID *) http_educationAdd:(EducationItem *) education{
+    return [self httpRequestAsynPost:Http_educationAdd data:[education toDictionary]];
+}
+//编辑教育经历
+-(RequestID *) http_educationEdit:(EducationItem *) education{
+    return [self httpRequestAsynPost:Http_educationEdit data:[education toDictionary]];
+}
+//删除教育经历
+-(RequestID *) http_educationDelete:(NSString *) educationId selected:(NSString *)selected nid:(NSString *)nid IsDefEducation:(BOOL)isDefEducation{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:educationId forKey:@"id"];
+    if (IS_NOT_EMPTY(selected)) {
+        [mutDict setObject:selected forKey:@"selected"];
+        if (IS_NOT_EMPTY(nid)) {
+            [mutDict setObject:nid forKey:@"nid"];
+        }
+        [mutDict setObject:isDefEducation?@"2":@"1" forKey:@"type"];
+    }
+    return [self httpRequestAsynPost:Http_educationDelete data:@[mutDict]];
+}
+
+//同步教育经历
+-(RequestID *) http_educationSync{
+    return [self httpRequestAsynPost:Http_educationSync data:nil];
+}
+
+//新增评论  userId 被评论者id（陌生人用户id，联系人用户id）   replyId 被回复者id
+-(RequestID *) http_remarkAdd:(NSString *)userId replyId:(NSString *)replyId content:(NSString *)text{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:userId forKey:@"uid"];
+    [mutDict setObject:text forKey:@"content"];
+    if (replyId) {
+        [mutDict setObject:replyId forKey:@"id1"];
+    }
+    return [self httpRequestAsynPost:Http_remarkAdd data:mutDict];
+}
+
+//删除评论
+-(RequestID *) http_remarkDelete:(NSArray *)remarkIds{
+    return [self httpRequestAsynPost:Http_remarkDelete data:remarkIds];
+}
+
+//查看评论
+-(RequestID *) http_remarkView:(NSString *)userId time:(NSString *)time count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_remarkView data:@{@"id":userId,@"time":time?time:@"0",@"count":[NSNumber numberWithInteger:count].stringValue}];
+}
+
+//加入黑名单
+-(RequestID *) http_blackAdd:(NSString *)bid cid:(NSString *)cid del:(BOOL) delete{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+//    [mutDict setObject:[NSNumber numberWithInteger:delete] forKey:@"delete"];
+    if (cid) {
+        [mutDict setObject:bid forKey:@"bid"];
+        [mutDict setObject:cid forKey:@"cid"];
+    }else {
+        [mutDict setObject:bid forKey:@"bid"];
+    }
+    return [self httpRequestAsynPost:Http_blackAdd data:@[mutDict]];
+}
+
+//撤销黑名单
+-(RequestID *) http_blackDelete:(NSString *)bid{
+    return [self httpRequestAsynPost:Http_blackDelete data:@[@{@"bid":bid}]];
+}
+
+//查看黑名单
+-(RequestID *) http_blackView:(NSString *)time{
+    return [self httpRequestAsynPost:Http_blackView data:@{@"time":time}];
+}
+
+//添加名片申请
+-(RequestID *) http_userApplyAdd:(NSString *)userId postscript:(NSString *)postscript{
+    return [self httpRequestAsynPost:Http_cardAdd data:@{@"id1":userId, @"postscript":postscript}];
+}
+
+//添加联系人并申请加好友
+-(RequestID *) http_userApplyAddContact:(NSString *)userId postscript:(NSString *)postscript{
+    return [self httpRequestAsynPost:Http_addContactd data:@{@"id1":userId, @"postscript":postscript?postscript:@""}];
+}
+
+//给他名片
+-(RequestID *) http_userApplyGiveto:(NSString *)userId{
+    return [self httpRequestAsynPost:Http_cardgiveto data:@{@"id":userId}];
+}
+
+//加他名片
+-(RequestID *) http_userApplyAddfrom:(NSString *)userId{
+    return [self httpRequestAsynPost:Http_cardAddFrom data:@{@"id":userId}];
+}
+
+//取消名片
+-(RequestID *) http_userApplyDelete:(NSString *)userId{
+    if (IS_NOT_EMPTY(userId)) {
+        return [self httpRequestAsynPost:Http_cardDelete data:@[@{@"id":userId}]];
+    }else {
+        return nil;
+    }
+}
+
+//同步名片申请
+-(RequestID *) http_userApplySync:(NSString *)time count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_cardSync data:@{@"time":time,@"count":[NSNumber numberWithInteger:count].stringValue}];
+}
+
+//同步用户状态（红点）
+-(RequestID *) http_userState{
+    return [self httpRequestAsynPost:Http_userStateSync data:nil];
+}
+
+//同步好友动态
+-(RequestID *) http_userChangeSync:(NSString *)time count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_changeSync data:@{@"time":time?time:@"0",@"count":[NSNumber numberWithInteger:count].stringValue}];
+}
+
+//同步我的访客
+-(RequestID *) http_userVisitSync:(NSString *)time count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_userVisitSync data:@{@"time":time,@"count":[NSNumber numberWithInteger:count].stringValue}];
+}
+
+//我的访客消除红点
+-(RequestID *) Http_userVisitRedImageCancelWithparam:(NSArray *)param{
+    return [self httpRequestAsynPost:Http_userVisitRedImageCancel data:param];
+}
+
+//同步个人动态
+-(RequestID *) http_userPersionSync:(NSString *)time count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_userChangeSync data:@{@"time":time,@"count":[NSNumber numberWithInteger:count].stringValue}];
+}
+
+//删除个人动态
+-(RequestID *) http_userPersionDeleteSync:(NSString *)dynamicID{
+    return [self httpRequestAsynPost:Http_userChangeDeleteSync data:@[@{@"id":dynamicID}]];
+}
+
+//用户反馈
+-(RequestID *) http_userFeedback:(NSString *)content{
+    return [self httpRequestAsynPost:Http_userfeedback data:@{@"content":content}];
+}
+
+//生成二维码
+-(RequestID *) http_getUserQrcode{
+    return [self httpRequestAsynGet:Http_userQrCode data:nil];
+}
+
+//获取用户类型
+-(RequestID *) http_getUserType:(NSString *)userId{
+    return [self httpRequestAsynPost:Http_userType data:@{@"id":userId}];
+}
+
+//查看陌生人或联系人详情资料
+/*
+ userId 用户id，仅用于分享查看其他人的联系人
+ contactId 联系人id
+ cid 注册用户id，仅用于查看陌生人、注册联系人   （uid、id），（cid）不能同时存在
+ time 上次查看的时间，默认0
+ */
+-(RequestID *) http_userViewinfo:(NSString *)userId contactId:(NSString *)contactId cid:(NSString *)cid time:(NSString *)time{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    if (contactId) {
+        [mutDict setObject:contactId forKey:@"id"];
+    }
+    
+    if (userId) {
+        [mutDict setObject:userId forKey:@"uid"];
+    }
+    if (cid) {
+        [mutDict setObject:cid forKey:@"cid"];
+    }
+    if (time) {
+        [mutDict setObject:time forKey:@"time"];
+    }
+    
+    return [self httpRequestAsynPost:Http_userViewinfo data:mutDict];
+}
+
+//新增标签（非注册）
+-(RequestID *) http_NRLabelAdd:(NSString *)uid name:(NSString *) name{
+    return [self httpRequestAsynPost:Http_NlabelAdd data:@{@"uid":uid,@"name":name}];
+}
+
+//查看标签（非注册）
+-(RequestID *) http_NRLabelView:(NSString *)uid time:(NSString *)time count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_NlabelView data:@{@"uid":uid,@"time":time,@"count":[NSNumber numberWithInteger:count].stringValue}];
+}
+
+//同步标签（非注册）
+-(RequestID *) http_NRLabelSync:(NSString *)uid{
+    return [self httpRequestAsynPost:Http_NlabelSync data:@{}];
+}
+
+//点击标签（非注册）
+-(RequestID *) http_NRLabelClick:(NSString *)contactId labelId:(NSString *)labelId{
+    return [self httpRequestAsynPost:Http_NlabelClick data:@{@"uid":contactId,@"id":labelId}];
+}
+
+//新增群组
+-(RequestID *) http_groupAdd:(NSString *) name{
+    return [self httpRequestAsynPost:Http_groupAdd data:@{@"name":name}];
+}
+
+//编辑群组 -  contacts 中存放 LOContactItem 对象
+-(RequestID *) http_groupEdit:(GroupItem *)group contacts:(NSArray *)contacts{
+    NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+    NSMutableArray *arrContact = [NSMutableArray array];
+    
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    if (group.groupId) {
+        [mutDict setObject:group.groupId forKey:@"id"];
+    }
+    if (group.name) {
+        [mutDict setObject:group.name forKey:@"name"];
+    }
+    [dic setObject:mutDict forKey:@"group"];
+    
+    for (LOContactItem *item in contacts) {
+        NSDictionary *dict = @{@"id":item.contactId, @"flag":item.flag};
+        [arrContact addObject:dict];
+    }
+    [dic setObject:arrContact forKey:@"contacts"];
+    return [self httpRequestAsynPost:Http_groupEdit data:dic];
+}
+
+//编辑联系人群组 groups-中存放GroupItem 对象
+-(RequestID *) http_groupEditContact:(NSString *)contactId groups:(NSArray *)groups
+{
+    NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+    NSMutableArray *arrGroups = [NSMutableArray array];
+    [dic setObject:@{@"id":contactId} forKey:@"contact"];
+    for (GroupItem *item in groups) {
+        [arrGroups addObject:[item toDictionary]];
+    }
+    [dic setObject:arrGroups forKey:@"groups"];
+    return [self httpRequestAsynPost:Http_groupEditContact data:dic];
+}
+
+//删除群组
+-(RequestID *) http_groupDelete:(NSString *)groupId{
+    return [self httpRequestAsynPost:Http_groupDelete data:@[@{@"id":groupId}]];
+}
+
+//同步群组
+-(RequestID *) http_groupSycn:(NSString *)time{
+    return [self httpRequestAsynPost:Http_groupSync data:@{@"time":time}];
+}
+
+//上传联系人列表
+/*time上次同步时间，默认0
+ contacts上传联系人列表：最多1000个
+ username联系人姓名
+ phones号码列表（最多2备用号+1个绑定号），不能为空
+ type手机、单位、住宅、自定义，phone电话号码
+ groups所属群组列表，
+ 群组名*/
+-(RequestID *) http_uploadContacts:(NSString *)time contacts:(NSArray *)contacts{
+    return [self httpRequestAsynPost:Http_uploadContacts data:@{@"time":(time)?time:@"0",@"contacts":contacts}];
+}
+
+//同步联系人列表
+-(RequestID *) http_syncContacts:(NSString *)time{
+    return [self httpRequestAsynPost:Http_SyncContacts data:@{@"time":(time)?time:@"0"}];
+}
+
+-(id)  sendSynContacts:(NSString *)time
+{
+    return [self httpRequestsynPost:Http_SyncContacts data:@{@"time":(time)?time:@"0"}];
+    //
+
+}
+
+//添加联系人
+-(RequestID *) http_contactsAdd:(NSArray *)array images:(NSArray *)datas{
+    
+    return [self httpRequestAsyns:Http_contactAdd method:@"POST" constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        NSInteger count = array.count; NSInteger imagecnt = (datas)?datas.count:0;
+        if (array && [array isKindOfClass:[NSArray class]]) {
+            NSString *bodyString = [array JSONString];
+            
+            NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+            if (![[HttpMethod sharedMethod] scheme:Http_contactAdd]) {
+                data = httpEncdecutils_encode(data);
+            }
+            [formData appendPartWithFormData:data name:@"param"];
+        }
+        for (NSInteger i = 0; i < count; i++) {
+            if (i < imagecnt) {
+                NSData *imageData = datas[i];
+                if (imageData && [imageData isKindOfClass:[NSData class]]) {
+                    [formData appendPartWithFileData:imageData name:@"image" fileName:@"ap.png" mimeType:@"image/jpeg"];
+                }
+            }
+        }
+    }];
+   //  [self httpRequestAsynPost:Http_contactAdd data:array];
+}
+
+//编辑联系人
+-(RequestID *) http_contactsEdit:(NSDictionary *)dict imageData:(NSData *)imageData {    
+    return [self httpRequestAsyns:Http_contactEdit method:@"POST" constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        if (dict && [dict isKindOfClass:[NSDictionary class]]) {
+            NSString *bodyString = [dict JSONString];
+            NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+            if (![[HttpMethod sharedMethod] scheme:Http_contactEdit]) {
+                data = httpEncdecutils_encode(data);
+            }
+            [formData appendPartWithFormData:data name:@"param"];
+        }
+        else if (dict == nil){
+            from_data_append(Http_contactEdit);
+        }
+        if (imageData && [imageData isKindOfClass:[NSData class]]) {
+            [formData appendPartWithFileData:imageData name:@"image" fileName:@"ap.png" mimeType:@"image/jpeg"];
+        }
+    }];
+}
+
+//删除联系人
+-(RequestID *) http_contactsDelete:(NSString *)contactId cid:(NSString *)cid{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:contactId forKey:@"id"];
+    if (cid) {
+        [mutDict setObject:cid forKey:@"cid"];
+    }
+    return [self httpRequestAsynPost:Http_contactDelete data:@[mutDict]];
+}
+
+//查看联系人资料
+/*uid 用户id，仅用于分享查看其他人的联系人
+ id 联系人id
+ time 上次查看的时间，默认0
+*/
+-(RequestID *) http_contactsView:(NSString *)userId contactId:(NSString *)contactId time:(NSString *)time{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    
+    if (IS_NOT_EMPTY(userId)) {
+        [mutDict setObject:userId forKey:@"uid"];
+    }
+    
+    if (contactId) {
+        [mutDict setObject:contactId forKey:@"id"];
+    }
+    
+    [mutDict setObject:time?time:@"0" forKey:@"time"];
+    
+    return [self httpRequestAsynPost:Http_contactView data:mutDict];
+}
+
+//查看搜索好友资料
+- (RequestID *)http_viewFriend:(NSString *)idStr Uid:(NSString *)uidStr
+{
+    return [self httpRequestAsynPost:Http_viewFriend data:@{@"uid":uidStr, @"id":idStr, @"time":@"0"}];
+}
+
+//查看分享联系人资料
+/*
+ uid 用户id，仅用于分享查看其他人的联系人
+ id 联系人id
+ */
+
+-(RequestID *) http_contactViewShae:(NSString *)userId contactId:(NSString *)contactId{
+    return [self httpRequestAsynPost:Http_contactViewShae data:@{@"id":contactId,@"uid":userId}];
+}
+
+//消息设置联系人资料
+-(RequestID *) http_contactSetMessageInfo:(NSString *)userId time:(NSString *)time{
+    return [self httpRequestAsynPost:Http_contactMessageSet data:@{@"id":userId,@"time":time}];
+}
+
+//添加用户为联系人
+-(RequestID *) http_contactAddUser:(NSString *) userId{
+    return [self httpRequestAsynPost:Http_contactAddUser data:@{@"id":userId}];
+}
+
+//添加号码为联系人
+-(RequestID *) http_contactAddMobile:(NSString *) mobile username:(NSString *)name{
+    return [self httpRequestAsynPost:Http_contactAddMobile data:@{@"mobile":mobile,@"username":name}];
+}
+
+//同步冲突联系人列表
+-(RequestID *) http_conflictContactSync:(NSString *) time{
+    return [self httpRequestAsynPost:Http_conflictSync data:@{@"time":time}];
+}
+
+//查看冲突联系人冲突信息
+-(RequestID *) http_conflictContactView:(NSString *) contactId{
+    return [self httpRequestAsynPost:Http_conflictView data:@{@"id":contactId}];
+}
+
+//冲突联系人转新建联系人
+-(RequestID *) http_conflictAddTo:(NSString *)contactId{
+    return [self httpRequestAsynPost:Http_conflictAddto data:@{@"id":contactId}];
+}
+
+//冲突联系人转任意联系人
+-(RequestID *) http_conflictAddany:(NSString *)contactId cid:(NSString *)cid{
+    return [self httpRequestAsynPost:Http_conflictAddany data:@{@"id":contactId,@"cid":cid}];
+}
+
+//删除冲突联系人
+-(RequestID *) http_conflictDelete:(NSString *)contactId{
+    return [self httpRequestAsynPost:Http_conflictDelete data:@{@"id":contactId}];
+}
+
+//上传位置
+-(RequestID *) http_userXyposUpload:(NSString *)longitude latiude:(NSString *) latitude{
+    return [self httpRequestAsynPost:Http_xyposUpload data:@{@"x":longitude,@"y":latitude}];
+}
+
+//取消位置
+-(RequestID *) http_userXyposDelete{
+    return [self httpRequestAsynPost:Http_xyposDelete data:nil];
+}
+
+//递名片发现
+-(RequestID *) http_findQuakePersion:(NSString *)longitude latiude:(NSString *) latitude distance:(NSString *)distance isLast:(BOOL)isLast time:(NSString *)time{
+    
+    NSMutableDictionary *dic  =[NSMutableDictionary dictionary];
+    if (!STRISEMPTY(longitude)) {
+        [dic setObject:longitude forKey:@"x"];
+    }
+    
+    if (!STRISEMPTY(latitude)) {
+        [dic setObject:latitude forKey:@"y"];
+    }
+    
+    if (!STRISEMPTY(distance)) {
+        [dic setObject:distance forKey:@"distance"];
+    }
+    
+    if (!STRISEMPTY(time)) {
+        [dic setObject:time forKey:@"time"];
+    }
+    
+    if (isLast) {
+        [dic setObject:@"1" forKey:@"last"];
+    }
+    
+    return [self httpRequestAsynPost:Http_findQuake data:dic];
+}
+
+//附近发现
+-(RequestID *) http_userFindNear:(NSString *)longitude latiude:(NSString *) latitude distance:(NSString *)distance time:(NSString *)time{
+
+    if (distance) {
+        return [self httpRequestAsynPost:Http_findNear data:@{@"x":longitude,@"y":latitude,@"distance":distance,@"time":(time)?time:@"7"}];
+    }
+    else{
+        return [self httpRequestAsynPost:Http_findNear data:@{@"x":longitude,@"y":latitude,@"time":(time)?time:@"7"}];
+    }
+}
+
+//加入群换组
+-(RequestID *) http_userFindGroupAdd:(NSString *)gname longitude:(NSDecimalNumber *)longitude latiude:(NSDecimalNumber *) latitude distance:(NSString *)distance{
+    if (!STRISEMPTY(distance)) {
+        return [self httpRequestAsynPost:Http_findAddGroup data:@{@"x":@0,@"y":@0,@"distance":distance,@"gname":gname}];
+    }else{
+        return [self httpRequestAsynPost:Http_findAddGroup data:@{@"x":@0,@"y":@0,@"gname":gname}];
+    }
+}
+
+//同步群换组
+-(RequestID *) http_userFindGroupSync{
+    return [self httpRequestAsynPost:Http_findSyncGroup data:nil];
+}
+
+//退出群换组
+-(RequestID *) http_userFindGroupExit{
+    return [self httpRequestAsynPost:Http_findExitGroup data:nil];
+}
+
+//陌生人搜索
+-(RequestID *) http_userSearch:(NSString *)query begin:(NSInteger)beign count:(NSInteger)count{
+    return [self httpRequestAsynPost:Http_userSearch data:@{@"query":query,@"begin":[NSNumber numberWithInteger:beign].stringValue,@"count":[NSNumber numberWithInteger:count]}];
+}
+
+//搜索全部--综合搜索
+-(RequestID *) http_allSearch:(NSString *)query
+{
+    return [self httpRequestAsynPost:Http_searchAll data:@{@"query":query}];
+}
+
+//查看共同好友
+- (RequestID *)http_contactSfriend:(NSString *)uid isContact:(BOOL)isContact Start:(NSInteger)start Count:(NSInteger)count
+{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    if (isContact) {
+        [mutDict setObject:uid forKey:@"id"];
+    }else{
+        [mutDict setObject:uid forKey:@"uid"];
+    }
+    
+    [mutDict setObject:[NSNumber numberWithInteger:start] forKey:@"start"];
+    [mutDict setObject:[NSNumber numberWithInteger:count] forKey:@"count"];
+    
+    return [self httpRequestAsynPost:Http_contactSfriend data:mutDict];
+}
+
+- (RequestID *)http_contactShareInfo:(NSString *)uid
+{
+    return [self httpRequestAsynPost:Http_contactShareinfo data:@{@"id":uid}];
+}
+
+//推荐用户列表
+-(RequestID *) http_userRecommendList:(NSUInteger) start count:(NSUInteger) count{
+    return [self httpRequestAsynPost:Http_userRecommend data:@{@"start":[NSNumber numberWithInteger:start].stringValue,@"count":[NSNumber numberWithInteger:count]}];
+}
+
+//推荐用户列表--新接口
+-(RequestID *) http_userRecommendListNew:(NSUInteger) start count:(NSUInteger) count
+{
+    return [self httpRequestAsynPost:Http_userRecommendNewList data:@{@"start":[NSNumber numberWithInteger:start].stringValue,@"count":[NSNumber numberWithInteger:count]}];
+}
+
+//推荐忽略用户--新增接口
+-(RequestID *) http_userIgnoreNew:(NSString *)uid
+{
+    return [self httpRequestAsynPost:Http_userIgnoreNew data:@[@{@"id":uid}]];
+}
+
+-(RequestID *) http_cancelRead:(NSArray *)uids
+{
+    NSMutableArray *marr = [[NSMutableArray alloc] init];
+    for (NSString *udi in uids) {
+        [marr addObject:@{@"id":udi}];
+    }
+    return [self httpRequestAsynPost:Http_userseeNew data:marr];
+}
+
+//推荐用户屏蔽
+-(RequestID *) http_userRecommendDelete:(NSString *)userId
+{
+    return [self httpRequestAsynPost:Http_userRecommendDelete data:@{@"id":userId}];
+}
+
+//发现-递名片-历史收到的名片
+- (RequestID *)http_findQuakeSync:(NSString *)time count:(NSInteger)count
+{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    if (IS_NOT_EMPTY(time)) {
+        [mutDict setObject:time forKey:@"time"];
+    }
+    
+    [mutDict setObject:[NSNumber numberWithInteger:count] forKey:@"count"];
+    
+    return [self httpRequestAsynPost:Http_findQuakeSync data:mutDict];
+}
+
+//发现-递名片-删除历史收到的名片
+- (RequestID *)http_findQuakeDelete:(NSArray *)idArray
+{
+    return [self httpRequestAsynPost:Http_findQuakeDelete data:idArray];
+}
+
+//公司搜索
+- (RequestID *)http_searchCompany:(NSString *)query begin:(NSInteger)begin count:(NSInteger)count
+{
+    return [self httpRequestAsynPost:Http_searchCompany data:@{@"query":query, @"begin":[NSNumber numberWithInteger:begin], @"count":[NSNumber numberWithInteger:count]}];
+}
+
+//学校搜索
+- (RequestID *)http_searchSchool:(NSString *)query begin:(NSInteger)begin count:(NSInteger)count
+{
+    return [self httpRequestAsynPost:Http_searchSchool data:@{@"query":query, @"begin":[NSNumber numberWithInteger:begin], @"count":[NSNumber numberWithInteger:count]}];
+}
+
+//教育背景导航
+- (RequestID *)http_selectEducation:(NSString *)idString
+{
+    if (IS_NOT_EMPTY(idString)) {
+        return [self httpRequestAsynPost:Http_selectEducation data:@{@"id":idString}];
+    }else {
+        return [self httpRequestAsynPost:Http_selectEducation data:nil];
+    }    
+}
+
+//工作背景导航
+- (RequestID *)http_selectWork:(NSString *)idString
+{
+    if (IS_NOT_EMPTY(idString)) {
+        return [self httpRequestAsynPost:Http_selectWork data:@{@"id":idString}];
+    }else {
+        return [self httpRequestAsynPost:Http_selectWork data:nil];
+    }
+}
+
+//选取工作经历
+- (RequestID *)http_jobSelect:(NSString *)jobID
+{
+    return [self httpRequestAsynPost:Http_jobSelect data:@{@"id":jobID}];
+}
+
+//选取教育经历
+- (RequestID *)http_eduSelect:(NSString *)eduID
+{
+    return [self httpRequestAsynPost:Http_eduSelect data:@{@"id":eduID}];
+}
+
+//获得圈子
+-(RequestID *)http_circle
+{
+    return [self httpRequestAsynPost:Http_circle data:nil];
+}
+
+
+//查看圈子
+- (RequestID *)http_circleView:(CircleItem *)item Start:(NSInteger)start Count:(NSInteger)count Flag:(NSInteger)flag {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    [dict setObject:[item toDictionary] forKey:@"circle"];
+    [dict setObject:[NSNumber numberWithInteger:start] forKey:@"start"];
+    [dict setObject:[NSNumber numberWithInteger:count] forKey:@"count"];
+    [dict setObject:[NSNumber numberWithInteger:flag] forKey:@"flag"];
+    return [self httpRequestAsynPost:Http_circleView data:dict];
+}
+
+//交换名片
+- (RequestID *)http_applyExchange:(NSString *)applyID
+{
+    NSDictionary *dict = @{@"id":applyID};
+    return [self httpRequestAsynPost:Http_applyExchange data:dict];
+}
+
+
+-(RequestID *) getGroupInfo:(NSString *)groupId
+{
+    return [self httpRequestAsynPost:Http_chatGoupInfo data:@{@"id":groupId}];
+}
+
+//资源检查更新
+- (RequestID *)http_resCheck:(NSString *)u_id Version:(NSString *)version
+{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:@"1" forKey:@"u_os"];
+    if (IS_NOT_EMPTY(u_id)) {
+        [mutDict setObject:u_id forKey:@"u_id"];
+    }
+    
+    if (IS_NOT_EMPTY(version)) {
+        [mutDict setObject:version forKey:@"u_version"];
+    }
+    
+    return [self httpRequestAsynGet:Http_resCheck data:mutDict];
+}
+
+//编辑群组
+-(RequestID *) http_groupChatEdit:(NSDictionary *)dict imageData:(NSData *)imageData
+{
+    return [self  httpRequestAsyns:Http_chatGroupEdit method:@"POST" constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        if (dict && [dict isKindOfClass:[NSDictionary class]]) {
+            NSString *bodyString = [dict JSONString];
+            NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+            if (![[HttpMethod sharedMethod] scheme:Http_chatGroupEdit]) {
+                data = httpEncdecutils_encode(data);
+            }
+            [formData appendPartWithFormData:data name:@"param"];
+        }
+        else if (dict == nil){
+            from_data_append(Http_chatGroupEdit);
+        }
+
+        if (imageData && [imageData isKindOfClass:[NSData class]]) {
+            [formData appendPartWithFileData:imageData name:@"image" fileName:@"ap.png" mimeType:@"image/jpeg"];
+        }
+    }];
+}
+
+//生日提醒推荐同步
+-(RequestID *) http_userBirthSync:(NSUInteger) begin count:(NSUInteger) count
+{
+    NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+    [dic setObject:[NSNumber numberWithInteger:begin] forKey:@"begin"];
+    [dic setObject:[NSNumber numberWithInteger:count] forKey:@"count"];
+    return  [self httpRequestAsynPost:Http_UserbirthsSync data:dic];
+}
+
+//名片申请短信
+- (RequestID *)http_smsApply:(NSString *)idStr Uid:(NSString *)uidStr
+{
+    return [self httpRequestAsynPost:Http_smsApply data:@{@"uid":uidStr, @"id":idStr}];
+}
+
+//添加分享名片为联系人
+- (RequestID *)http_contactAddContact:(NSString *)uid ID:(NSString *)userid
+{
+    return [self httpRequestAsynPost:Http_contactAddContact data:@[@{@"uid":uid, @"id":userid}]];
+}
+
+//给服务器发送 推送 token
+-(RequestID *) sendToServerToken:(NSString *) token
+{
+    return [self httpRequestAsynPost:Http_sendToken data:@{@"apnstoken":token}];
+}
+
+//同步匹配列表
+-(RequestID *) sync_cmatch
+{
+    return [self httpRequestAsynPost:Http_syncCmatch data:nil];
+}
+
+//获取版本信息
+-(RequestID *) getVersion:(NSString *)u_id
+{
+    return [self httpRequestAsynGet:Http_getVersion data:@{@"u_id":u_id,@"u_os":@"1",@"u_version":APP_VERSION}];
+}
+
+//提交用户反馈
+-(RequestID *) submitFeedback:(NSString *) content
+{
+    MyInfoObject *me = [[SaveMyInfo shareSaveMyInfo] getLoginResult].user;
+    NSString *phone = me.mobile;
+    return [self httpRequestAsynPost:Http_feedback data:@{@"u_id":(me.userId)?me.userId:@"",@"u_phone":(phone)?phone:@"", @"f_info":content}];
+}
+
+//获取广告信息
+- (RequestID *)getAdVert:(NSString *)u_id
+{
+    NSDictionary *dict = [NSDictionary dictionary];
+    if (IS_NOT_EMPTY(u_id)) {
+        dict = @{@"u_id":u_id, @"u_os":@"1", @"u_version":APP_VERSION};
+    }else {
+        dict = @{@"u_os":@"1", @"u_version":APP_VERSION};
+    }
+    return [self httpRequestAsynGet:Http_advert data:dict];
+}
+
+-(RequestID *) backupCreate:(NSInteger) force
+{
+    return [self httpRequestAsynPost:Http_createBackup data:@{@"force":[NSString stringWithFormat:@"%ld",(long)force]}];
+}
+
+//删除备份
+-(RequestID *) backupDeleted:(NSString *) backupId
+{
+    return [self httpRequestAsynPost:Http_deleteBackup data:@{@"id":backupId}];
+}
+
+//恢复联系人备份
+-(RequestID *) backupRestore:(NSString *) backupId
+{
+    return [self httpRequestAsynPost:Http_restoreBackup data:@{@"id":backupId}];
+}
+
+//同步联系人备份列表
+-(RequestID *) bakcupSyncList{
+    return [self httpRequestAsynPost:Http_syncBackup data:nil];
+}
+
+//合并联系人
+- (RequestID *)http_mergeUser:(NSDictionary *)dict ImageData:(NSData *)imageData
+{
+    return [self httpRequestAsyns:http_mergeUser method:@"POST" constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        if (dict && [dict isKindOfClass:[NSDictionary class]]) {
+            NSString *bodyString = [dict JSONString];
+            
+            NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+            if (![[HttpMethod sharedMethod] scheme:http_mergeUser]) {
+                data = httpEncdecutils_encode(data);
+            }
+            [formData appendPartWithFormData:data name:@"param"];
+        }
+        else if (dict == nil){
+            from_data_append(http_mergeUser);
+        }
+        if (imageData && [imageData isKindOfClass:[NSData class]]) {
+            [formData appendPartWithFileData:imageData name:@"image" fileName:@"ap.png" mimeType:@"image/jpeg"];
+        }
+    }];
+}
+
+//发送设备信息
+-(RequestID *) sendDeviceInfo
+{
+    NSMutableDictionary *dic = [[NSMutableDictionary alloc] init];
+    [dic setObject:[NSString stringWithFormat:@"IOS-%@-%@-%@", [[UIDevice currentDevice]systemVersion],[[UIDevice currentDevice] fcDeviceType],APP_VERSION] forKey:@"device"];
+    [dic setObject:[OpenUDID value] forKey:@"imei"];
+    return [self httpRequestAsynPost:http_deviceInfo data:dic];
+}
+
+//同步单一好友动态
+-(RequestID *) http_changeUsersync:(NSInteger)count Uid:(NSString *)uid Time:(NSNumber *)time
+{
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:@(count) forKey:@"count"];
+    [mutDict setObject:uid forKey:@"uid"];
+    if (time) {
+        [mutDict setObject:time forKey:@"time"];
+    }
+    
+    return [self httpRequestAsynPost:http_changeUsersync data:mutDict];
+}
+
+#pragma mark - super
+
+-(id) httpRequestAsynGet:(NSUInteger) type data:(NSDictionary *)dic
+{
+    NSString *m = [[HttpMethod sharedMethod] typeMethod:(HTTPTYPE)type];
+    if(STRISEMPTY(m)){
+        return nil;
+    }
+    BOOL scheme = [[HttpMethod sharedMethod] scheme:type];
+    NSMutableString *strurl = [NSMutableString stringWithFormat:@"%@/%@",(scheme)?BASE_URLS:BASE_URL,m];
+    if (type == Http_getVersion || type == Http_feedback || type == Http_advert || type == Http_resCheck) {
+        strurl = [NSMutableString stringWithFormat:@"%@/%@?",RESOUR_BASE_URL,m];
+    }
+    if(dic){
+        NSArray *arrkey = [dic allKeys];
+        for (NSString *key in arrkey) {
+            [strurl appendFormat:@"%@=%@&",key,[dic objectForKey:key]];
+        }
+    }
+    if ([strurl hasSuffix:@"&"]) {
+        [strurl deleteCharactersInRange:NSMakeRange(strurl.length - 1, 1)];
+    }
+    
+    AFHTTPRequestOperationManager *manage = [AFHTTPRequestOperationManager manager];
+    NSString *loginKey = [[SaveMyInfo shareSaveMyInfo] getLoginKey];
+    if (IS_NOT_EMPTY(loginKey)) {
+        [manage.requestSerializer setValue:loginKey forHTTPHeaderField:@"login_key"];
+    }
+
+    NSMutableURLRequest *request = [manage.requestSerializer requestWithMethod:@"GET" URLString:[strurl stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding] parameters:nil error:nil];
+    
+    AFHTTPRequestOperation *operation = [manage HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operationObje, id responseObject) {
+        
+        [self requestFinished:operationObje];
+    } failure:^(AFHTTPRequestOperation *operationObje, NSError *error) {
+        
+        [self requestFailed:operationObje];
+    }];
+    operation.responseSerializer = [MAppHttpJson serializer];
+    operation.tag = type;
+    RequestID *rid = [RequestID requestIdWith:type object:operation andTag:_nextId++];
+    rid.name = m;
+     operation.userInfo = @{@"name":m,@"idtag":rid.idTag};
+    [self addRequestId:rid];
+    [[manage operationQueue] addOperation:operation];
+    return rid;
+}
+
+-(id) httpRequestAsynPost:(NSUInteger) type data:(id)param
+{
+    
+    return [self httpRequestAsyns:type  method:@"POST" constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        if (type == Http_feedback) {
+            NSArray *arr = [param allKeys];
+            for (NSString *key in arr) {
+                [formData appendPartWithFormData:[param[key] dataUsingEncoding:NSUTF8StringEncoding] name:key];
+            }
+        }else if(Http_resCheck == type){
+            if (param && [param isKindOfClass:[NSDictionary class]]) {
+                NSString *bodyString = [param JSONString];
+                NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+                [formData appendPartWithFormData:data name:@"param"];
+                DLog(@"post[%ld] body:%@",type,bodyString);
+            }
+            else if(param && [param isKindOfClass:[NSArray class]])
+            {
+                NSData* data =  [NSJSONSerialization dataWithJSONObject:param options: NSJSONWritingPrettyPrinted error:nil];
+                [formData appendPartWithFormData:data name:@"param"];
+        
+            }
+        }else{
+            if (param && [param isKindOfClass:[NSDictionary class]]) {
+                NSString *bodyString = [param JSONString];
+                NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+                if (![[HttpMethod sharedMethod] scheme:type]) {
+                    data = httpEncdecutils_encode(data);
+                }
+                [formData appendPartWithFormData:data name:@"param"];
+                DLog(@"post[%ld] body:%@",type,bodyString);
+            }else if (param && [param isKindOfClass:[NSArray class]]) {
+                NSData* data =  [NSJSONSerialization dataWithJSONObject:param options: NSJSONWritingPrettyPrinted error:nil];
+                if (![[HttpMethod sharedMethod] scheme:type]) {
+                    data = httpEncdecutils_encode(data);
+                }
+                [formData appendPartWithFormData:data name:@"param"];
+            }else if(param == nil){
+                
+                if (![[HttpMethod sharedMethod] scheme:type]) {
+                   NSData* data = httpEncdecutils_encode(nil);
+                   [formData appendPartWithFormData:data name:@"param"];
+                }
+                
+            }
+        }
+    }];
+}
+
+
+//同步发起的请求
+-(id) httpRequestsynPost:(NSUInteger)type data:(NSDictionary *)dic
+{
+#if 0
+    NSString *m = [[HttpMethod sharedMethod] typeMethod:(HTTPTYPE)type];
+    if(STRISEMPTY(m)){
+        return nil;
+    }
+    BOOL scheme = [[HttpMethod sharedMethod] scheme:type];
+    NSMutableString *strurl = [NSMutableString stringWithFormat:@"%@/%@",(scheme)?BASE_URL:BASE_URL,m];
+    NSString *bodyString = [dic JSONString];
+    
+    if (!scheme) {
+        NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+        data = [self encdecutils_encode:data];
+        bodyString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    }
+    
+
+    
+    NSString *body = [NSString stringWithFormat:@"%@=%@",@"param",bodyString];
+    NSURL *URL = [NSURL URLWithString:[strurl stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:URL cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:15];
+    [request setTimeoutInterval:10];
+    [request setHTTPMethod:@"POST"];
+    [request setHTTPBody:[body dataUsingEncoding:NSUTF8StringEncoding]];
+    [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"1" forHTTPHeaderField:@"encparam"];
+    NSString *loginKey = [[SaveMyInfo shareSaveMyInfo] getLoginKey];
+    if (loginKey) {
+        [request addValue:loginKey forHTTPHeaderField:@"login_key"];
+    }
+
+    NSURLResponse * response = nil;
+    NSError * error = nil;
+    NSData * backData = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:&error];
+    if (error == nil) {
+        NSString *s = [[NSString alloc] initWithData:backData encoding:NSUTF8StringEncoding];
+        id dict=[NSJSONSerialization  JSONObjectWithData:backData options:0 error:nil];
+        DLog(@"接收消息[%@]---json=%@",[[HttpMethod sharedMethod] typeMethod:type],s);
+        LOError *err = [self checkIsSuccess:dict type:type];
+        if (err == nil) {
+            return [self analyProtocol:dict type:type];
+        }else{
+            return err;
+        }
+    }else
+    {
+        return  MAKE_ERROR(NET_TIMEOUT, NET_ERROR_CODE);
+    }
+    
+#else
+    NSString *m = [[HttpMethod sharedMethod] typeMethod:(HTTPTYPE)type];
+    if(STRISEMPTY(m)){
+        return nil;
+    }
+    
+    BOOL scheme = [[HttpMethod sharedMethod] scheme:type];
+    NSMutableString *strurl = [NSMutableString stringWithFormat:@"%@/%@",(scheme)?BASE_URLS:BASE_URL,m];
+    if (type == Http_getVersion || type == Http_feedback) {
+        strurl = [NSMutableString stringWithFormat:@"%@/%@",RESOUR_BASE_URL,m];
+    }
+    AFHTTPRequestOperationManager *manage = [AFHTTPRequestOperationManager manager];
+    NSString *loginKey = [[SaveMyInfo shareSaveMyInfo] getLoginKey];
+    if (IS_NOT_EMPTY(loginKey)) {
+        [manage.requestSerializer setValue:loginKey forHTTPHeaderField:@"login_key"];
+    }
+    
+    if (Http_contactAdd == type ||
+        Http_userEdit == type ||
+        Http_contactEdit == type ||
+        Http_chatGroupEdit == type ||
+        http_mergeUser == type ||
+        Http_uploadContacts == type) {
+        [manage.requestSerializer setValue:@"1" forHTTPHeaderField:@"encparam"];
+    }
+    NSMutableURLRequest *request = [manage.requestSerializer multipartFormRequestWithMethod:@"POST" URLString:strurl parameters:nil constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        if (type == Http_feedback) {
+            NSArray *arr = [dic allKeys];
+            for (NSString *key in arr) {
+                [formData appendPartWithFormData:[dic[key] dataUsingEncoding:NSUTF8StringEncoding] name:key];
+            }
+        }else{
+            if (dic && [dic isKindOfClass:[NSDictionary class]]) {
+                NSString *bodyString = [dic JSONString];
+                NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+                if (![[HttpMethod sharedMethod] scheme:type]) {
+                    data = httpEncdecutils_encode(data);
+                }
+                [formData appendPartWithFormData:data name:@"param"];
+                DLog(@"post[%ld] body:%@",type,bodyString);
+            }else if (dic && [dic isKindOfClass:[NSArray class]]) {
+                NSData* data =  [NSJSONSerialization dataWithJSONObject:dic options: NSJSONWritingPrettyPrinted error:nil];
+                if (![[HttpMethod sharedMethod] scheme:type]) {
+                    data = httpEncdecutils_encode(data);
+                }
+                [formData appendPartWithFormData:data name:@"param"];
+            }
+        }
+    } error:nil];
+    AFHTTPRequestOperation *operation = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+    operation.responseSerializer = [MAppHttpJson serializer];
+    operation.tag = type;
+    RequestID *rid = [RequestID requestIdWith:type object:operation andTag:_nextId++];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(HttpStartRequest:requestId:)]) {
+        [self.delegate HttpStartRequest:self requestId:rid];
+    }
+    rid.name = m;
+    operation.userInfo = @{@"name":m,@"idtag":rid.idTag};
+    if (scheme) {
+        AFSecurityPolicy *securityPolicy = [AFSecurityPolicy defaultPolicy];
+        securityPolicy.allowInvalidCertificates = YES;
+        operation.securityPolicy = securityPolicy;
+    }
+    
+    [operation start];
+    [operation waitUntilFinished];
+    NSData * backData = [operation responseData];
+    if (backData && backData.length > 0 ) {
+        NSString *s = [[NSString alloc] initWithData:backData encoding:NSUTF8StringEncoding];
+        id dict=[NSJSONSerialization  JSONObjectWithData:backData options:0 error:nil];
+        DLog(@"接收消息[%@]---json=%@",[[HttpMethod sharedMethod] typeMethod:type],s);
+        LOError *err = [self checkIsSuccess:dict type:type];
+        if (err == nil) {
+            return [self analyProtocol:dict type:type];
+        }else{
+            return err;
+        }
+    }else
+    {
+        return  MAKE_ERROR(NET_TIMEOUT, NET_ERROR_CODE);
+    }
+#endif
+}
+-(id) httpRequestAsyns:(NSUInteger) type  method:(NSString *)method constructingBodyWithBlock:(void (^)(id <AFMultipartFormData> formData))block
+{
+  
+    
+    NSString *m = [[HttpMethod sharedMethod] typeMethod:(HTTPTYPE)type];
+    if(STRISEMPTY(m)){
+        return nil;
+    }
+    BOOL scheme = [[HttpMethod sharedMethod] scheme:type];
+    NSMutableString *strurl = [NSMutableString stringWithFormat:@"%@/%@",(scheme)?BASE_URLS:BASE_URL,m];
+    if (type == Http_getVersion || type == Http_feedback) {
+        strurl = [NSMutableString stringWithFormat:@"%@/%@",RESOUR_BASE_URL,m];
+    }
+    if(type == Http_resCheck){
+        strurl = [NSMutableString stringWithFormat:@"%@/%@",BASE_URL,m]; scheme = NO;
+    }
+    AFHTTPRequestOperationManager *manage = [AFHTTPRequestOperationManager manager];
+    NSString *loginKey = [[SaveMyInfo shareSaveMyInfo] getLoginKey];
+    if (IS_NOT_EMPTY(loginKey)) {
+        [manage.requestSerializer setValue:loginKey forHTTPHeaderField:@"login_key"];
+    }
+    if (Http_contactAdd == type ||
+        Http_userEdit == type ||
+        Http_contactEdit == type ||
+        Http_chatGroupEdit == type ||
+        http_mergeUser == type ||
+        Http_uploadContacts == type) {
+        [manage.requestSerializer setValue:@"1" forHTTPHeaderField:@"encparam"];
+    }
+
+    NSDictionary *parameters = nil;
+    if ([method isEqualToString:@"GET"] && block) {
+        block((id<AFMultipartFormData>)parameters);
+    }
+    NSMutableURLRequest *request = ([method isEqualToString:@"POST"])?[manage.requestSerializer multipartFormRequestWithMethod:method URLString:strurl parameters:nil constructingBodyWithBlock:block error:nil]:[manage.requestSerializer requestWithMethod:@"GET" URLString:strurl parameters:parameters error:nil];
+    AFHTTPRequestOperation *operation = [manage HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operationObje, id responseObject) {
+      
+        [self requestFinished:operationObje];
+    } failure:^(AFHTTPRequestOperation *operationObje, NSError *error) {
+     
+        [self requestFailed:operationObje];
+    }];
+    operation.responseSerializer = [MAppHttpJson serializer];
+    operation.tag = type;
+    RequestID *rid = [RequestID requestIdWith:type object:operation andTag:_nextId++];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(HttpStartRequest:requestId:)]) {
+        [self.delegate HttpStartRequest:self requestId:rid];
+    }
+    rid.name = m;
+    operation.userInfo = @{@"name":m,@"idtag":rid.idTag};
+    [self addRequestId:rid];
+    if (scheme) {
+        AFSecurityPolicy *securityPolicy = [AFSecurityPolicy defaultPolicy];
+        securityPolicy.allowInvalidCertificates = YES;
+        operation.securityPolicy = securityPolicy;
+    }
+    [[manage operationQueue] addOperation:operation];
+    return rid;
+}
+
+-(RequestID *) upLoadSource:(NSDictionary *) param images:(NSArray *)images progreBlock:(void (^)(NSUInteger bytesWritten, long long totalBytesWritten, long long totalBytesExpectedToWrite)) progreBlock
+{
+    NSString *m = [[HttpMethod sharedMethod] typeMethod:Http_uploadContacts];
+    if(STRISEMPTY(m)){
+        return nil;
+    }
+    BOOL scheme = [[HttpMethod sharedMethod] scheme:Http_uploadContacts];
+    NSMutableString *strurl = [NSMutableString stringWithFormat:@"%@/%@",(scheme)?BASE_URLS:BASE_URL,m];
+    AFHTTPRequestOperationManager *manage = [AFHTTPRequestOperationManager manager];
+    NSString *loginKey = [[SaveMyInfo shareSaveMyInfo] getLoginKey];
+    if (IS_NOT_EMPTY(loginKey)) {
+        [manage.requestSerializer setValue:loginKey forHTTPHeaderField:@"login_key"];
+    }
+    
+    [manage.requestSerializer setValue:@"1" forHTTPHeaderField:@"encparam"];
+    NSMutableURLRequest *request = [manage.requestSerializer multipartFormRequestWithMethod:@"POST" URLString:strurl parameters:nil constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
+        NSString *bodyString = [param JSONString];
+        for (NSData *imageData in images) {
+            [formData appendPartWithFileData:imageData name:@"image" fileName:@"ap.png" mimeType:@"image/jpeg"];
+        }
+        NSData *data = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+        
+        if (![[HttpMethod sharedMethod] scheme:Http_uploadContacts]) {
+            data = httpEncdecutils_encode(data);
+        }
+        
+        [formData appendPartWithFormData:data name:@"param"];
+    } error:nil];
+
+    AFHTTPRequestOperation *operation = [manage HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operationObje, id responseObject) {
+        [self requestFinished:operationObje];
+    } failure:^(AFHTTPRequestOperation *operationObje, NSError *error) {
+        [self requestFailed:operationObje];
+    }];
+    
+    if (scheme) {
+        AFSecurityPolicy *securityPolicy = [AFSecurityPolicy defaultPolicy];
+        securityPolicy.allowInvalidCertificates = YES;
+        operation.securityPolicy = securityPolicy;
+    }
+    [operation setUploadProgressBlock:progreBlock];
+    operation.responseSerializer = [MAppHttpJson serializer];
+    operation.tag = Http_uploadContacts;
+    RequestID *rid = [RequestID requestIdWith:Http_uploadContacts object:operation andTag:_nextId++];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(HttpStartRequest:requestId:)]) {
+        [self.delegate HttpStartRequest:self requestId:rid];
+    }
+
+    rid.name = m;
+    operation.userInfo = @{@"name":m,@"idtag":rid.idTag};
+    [self addRequestId:rid];
+    [[manage operationQueue] addOperation:operation];
+    return rid;
+    
+}
+
+
+-(RequestID *) fileDownURL:(NSString *)url progreBlock:(void (^)(NSUInteger bytesWritten, long long totalBytesWritten, long long totalBytesExpectedToWrite)) progreBlock
+{
+    NSString *strurl = url;
+    AFHTTPRequestOperationManager *manage = [AFHTTPRequestOperationManager manager];
+    NSString *loginKey = [[SaveMyInfo shareSaveMyInfo] getLoginKey];
+    if (IS_NOT_EMPTY(loginKey)) {
+        [manage.requestSerializer setValue:loginKey forHTTPHeaderField:@"login_key"];
+    }
+    //[manage.requestSerializer setValue:@"1" forHTTPHeaderField:@"encparam"];
+    NSDictionary *parameters = nil;
+    NSMutableURLRequest *request = [manage.requestSerializer requestWithMethod:@"GET" URLString:strurl parameters:parameters error:nil];
+    AFHTTPRequestOperation *operation = [manage HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operationObje, id responseObject)
+    {
+        RequestID *srid = [self fineRequestId:operationObje];
+        if (srid && srid.resultBlock) {
+            srid.resultBlock(YES,responseObject);
+        }
+    } failure:^(AFHTTPRequestOperation *operationObje, NSError *error) {
+        LOError *err = MAKE_ERROR(down_failed,error.code);
+        RequestID *srid =  [self fineRequestId:operationObje];
+        if (srid && srid.resultBlock) {
+            srid.resultBlock(NO,err);
+        }
+    }];
+    operation.tag = 1000;
+    operation.responseSerializer = [MAppHttpJson serializer];
+    [operation setUploadProgressBlock:progreBlock];
+    RequestID *rid = [RequestID requestIdWith:1000 object:operation andTag:_nextId++];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(HttpStartRequest:requestId:)]) {
+        [self.delegate HttpStartRequest:self requestId:rid];
+    }
+    
+    rid.name = @"fd";
+    operation.userInfo = @{@"name":@"fd",@"idtag":rid.idTag};
+    [self addRequestId:rid];
+    [[manage operationQueue] addOperation:operation];
+    return rid;
+}
+
+
+-(id) analyProtocol:(NSDictionary *)dic type:(NSUInteger)type
+{
+    @autoreleasepool {
+        
+        void (^loper_swipBlock)(HTTPTYPE,id) = ^(HTTPTYPE request_type,id requetObject){
+            
+            switch (request_type) {
+                case Http_userView:
+                {
+                    if ([requetObject isKindOfClass:[LOPersonInfo class]]) {
+                        [(LOPersonInfo *)requetObject swapId];
+                    }
+                }
+                    break;
+                    
+                default:
+                    break;
+            }
+        };
+        
+        NSNumber *encoded = dic[@"encoded"];
+        id data = [dic objectForKey:@"result"];
+        if (encoded && encoded.integerValue == 1) {
+            if(data){
+                data = httpEncdecutils_decode(data);
+            }
+        }
+        
+        Class c = [[HttpMethod sharedMethod] typeClass:(HTTPTYPE)type];
+        DLog(@"解析 c=%@ type=%ld",c,type);
+        id obj = nil;
+        if (c) {
+            switch (type) {
+                case Http_chatGroupList:
+                    // case Http_userSearch:
+                    return [[c alloc] initWithArray:data];
+                    break;
+                default:{
+                    DLog(@"接收消息[%@]---json=%@",[[HttpMethod sharedMethod] typeMethod:type],[data JSONString]);
+                    
+                    if (data != [NSNull null] && [data isKindOfClass:[NSDictionary class]]){
+                        obj =  [[c alloc] initWithDictionary:data];
+                    }
+                    if (obj) {
+                        loper_swipBlock(type,obj);
+                        return obj;
+                    }else{
+                        return dic;
+                    }
+                    
+                }
+                    break;
+            }
+            
+            
+        }else{
+            return data;
+        }
+    }
+    return dic;
+}
+#define netorrrcode  NET_ERROR_FAILD
+
+-(id) checkIsSuccess:(NSDictionary *)dic type:(NSUInteger)type
+{
+    if(dic==nil){
+        return MAKE_ERROR(NET_ERROR, netorrrcode);
+    }
+    NSNumber *code = [dic objectForKey:@"error"];
+    if (code == nil) {
+        return MAKE_ERROR(NET_ERROR, netorrrcode);
+    }
+    if (code.integerValue != 0) {
+        return MAKE_ERROR([[HttpMethod sharedMethod] errorText:code.integerValue], code.integerValue);
+    }
+    id result = [dic objectForKey:@"result"];
+    if (result == nil && [code integerValue] != 0) {
+        return MAKE_ERROR(NET_ERROR, netorrrcode);
+    }
+    return nil;
+}
+
+- (RequestID *)thirdLogin_bindcheckWithUid:(NSString *)uid type:(SSDKPlatformType)type {
+
+     NSString *platType = @"";
+    switch (type) {
+        case SSDKPlatformSubTypeQZone:
+            platType = @"sqq";
+            break;
+            
+        case SSDKPlatformTypeWechat:
+            platType = @"sweixin";
+            break;
+            
+        case SSDKPlatformTypeSinaWeibo:
+            platType = @"sweibo"; break;
+        default:break;
+    }
+    
+    
+    return [self httpRequestAsynPost:http_thirdLogin_bindCheck data:@{platType:uid}];
+   
+}
+
+- (RequestID *)thirdLogin_bindcommitWithThidPlatType:(SSDKPlatformType)type uid:(NSString *)uid nickName:(NSString *)nickName{
+    
+    NSString *platType = @"";
+    NSString *userName = @"";
+    
+    switch (type) {
+        case SSDKPlatformSubTypeQZone:
+            platType = @"sqq";
+            userName = @"sqqname";
+            break;
+            
+        case SSDKPlatformTypeWechat:
+            platType = @"sweixin";
+            userName = @"swxname";
+            break;
+            
+        case SSDKPlatformTypeSinaWeibo:
+            platType = @"sweibo";
+            userName = @"swbname";
+            break;
+            
+        default:
+            break;
+    }
+    return [self httpRequestAsynPost:http_thirdLogin_bindCommit data:@{platType:uid,userName:nickName}];
+}
+
+- (RequestID *)thirdLogin_unbindThidPlatType:(SSDKPlatformType)type{
+    
+    NSString *platType;
+    NSString *userName;
+    
+    switch (type) {
+        case SSDKPlatformTypeQQ:
+            platType = @"sqq";
+            userName = @"sqqname";
+            break;
+            
+        case SSDKPlatformTypeWechat:
+            platType = @"sweixin";
+            userName = @"swxname";
+            break;
+            
+        case SSDKPlatformTypeSinaWeibo:
+            platType = @"sweibo";
+            userName = @"swbname";
+            break;
+            
+        default:
+            break;
+    }
+    
+    return [self httpRequestAsynPost:http_thirdLogin_unBind data:@{platType:@"",userName:@""}];
+}
+
+- (RequestID *)thirdLogin_getLoginDetailWithUid:(NSString *)uid{
+    
+    return [self httpRequestAsynPost:http_thirdLogin_loginDetail data:@{@"sqq":uid}];
+    
+}
+
+- (RequestID *)thirdLogin_uploadHeadImage{
+    
+    return [self httpRequestAsynPost:http_thirdLogin_uploadHeadImage data:@{@"sqq":@"DBDCF15A2A1587F32E507777A7449A34"}];
+    
+}
+
+
+-(void) hudShow:(UIView *)inView msg:(NSString *)msgText
+{
+    if(!_mbProgressHud){
+        _mbProgressHud = [[MBProgressHUD alloc] initWithView:inView];
+        _mbProgressHud.mode = MBProgressHUDModeIndeterminate;//;
+        if(msgText && msgText.length > 0){
+            [_mbProgressHud setLabelText:msgText];
+        }
+        [inView addSubview:_mbProgressHud];
+    }
+    [_mbProgressHud show:YES];
+}
+
+-(void) hudClose
+{
+    if(_mbProgressHud){
+        [_mbProgressHud hide:NO];
+        [_mbProgressHud hide:NO afterDelay:0.3];
+        _mbProgressHud = nil;
+    }
+}
+
+
+@end

@@ -1,0 +1,52 @@
+//
+//  RequestID.m
+//  httpTest
+//
+//  Created by sunjun on 13-6-10.
+//  Copyright (c) 2013年 sun. All rights reserved.
+//
+
+#import "RequestID.h"
+
+@interface RequestID()
+{
+}
+
+-(id) initRequestId:(NSUInteger) type object:(id) object andTag:(NSUInteger) atag;
+
+@end
+@implementation RequestID
+- (void)dealloc
+{
+    if (_resultBlock) {
+        self.resultBlock = nil;
+    }
+    NSLog(@"dealloc [%@],type=%d,tag=%@",NSStringFromClass([self class]),self.type,self.idTag);
+}
+-(id) initRequestId:(NSUInteger) atype object:(id) aobject andTag:(NSUInteger) atag
+{
+    self = [super init];
+    if(self){
+        _idTag = [NSNumber numberWithUnsignedInteger:atag];
+        _object = aobject;
+        _type = atype;
+        self.name = @"";
+    }
+    return self;
+}
+
++(id) requestIdWith:(NSUInteger) type object:(id) object andTag:(NSUInteger) atag
+{
+    return [[[self class] alloc] initRequestId:type object:object andTag:atag];
+}
+
+-(BOOL) isEqual:(RequestID *)theObject
+{
+    return (self.type == theObject.type && [self.name isEqualToString:theObject.name] && [self.idTag isEqualToNumber:theObject.idTag]);
+}
+
+-(void) setResultBlock:(void (^)(BOOL isSuccess,id object))callBack{
+    _resultBlock = callBack;
+}
+@end
+

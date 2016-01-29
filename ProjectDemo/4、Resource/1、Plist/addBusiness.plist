@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>imageName</key>
+			<string>scan.png</string>
+			<key>title</key>
+			<string>扫一扫</string>
+			<key>deatile</key>
+			<string>扫描二维码/名片添加新的朋友</string>
+		</dict>
+		<dict>
+			<key>imageName</key>
+			<string>impotContactBook.png</string>
+			<key>title</key>
+			<string>导入手机通讯录中的好友</string>
+			<key>deatile</key>
+			<string>导入系统手机通讯录中的好友到卓越通讯录</string>
+		</dict>
+		<dict>
+			<key>imageName</key>
+			<string>inputTeladd.png</string>
+			<key>title</key>
+			<string>输入电话加入名片</string>
+			<key>deatile</key>
+			<string>通过电话号码搜索好友并加入到卓越通讯录中</string>
+		</dict>
+	</array>
+</dict>
+</plist>

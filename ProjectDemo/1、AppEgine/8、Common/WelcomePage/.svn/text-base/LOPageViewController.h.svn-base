@@ -1,0 +1,15 @@
+//
+//  LOPageViewController.h
+//  YM
+//
+//  Created by t2 on 15/5/13.
+//  Copyright (c) 2015年 YM. All rights reserved.
+//
+
+#import "LOBaseViewController.h"
+#import "SwipeView.h"
+typedef void (^DidSelectedEnter)();
+@interface LOPageViewController : LOBaseViewController
+
+@property (nonatomic, copy) DidSelectedEnter didSelectedEnter;
+@end

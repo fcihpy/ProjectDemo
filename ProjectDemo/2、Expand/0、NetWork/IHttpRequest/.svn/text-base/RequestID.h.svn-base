@@ -1,0 +1,26 @@
+//
+//  RequestID.h
+//  httpTest
+//
+//  Created by sunjun on 13-6-10.
+//  Copyright (c) 2013年 sun. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+typedef void(^RequestResult)(BOOL isSuccess,id object);
+
+@interface RequestID : NSObject
+@property(nonatomic,assign,readonly) NSUInteger type;
+@property(nonatomic,weak,readonly) id object;
+@property(nonatomic,strong,readonly) NSNumber *idTag;
+@property(nonatomic,copy) NSString *name;
+@property(nonatomic,strong) id userInfo;
+//@property(readwrite,nonatomic,copy)  void (^resultBlock)(BOOL isSuccess,id object);
+@property(readwrite,nonatomic,copy) RequestResult resultBlock;
++(id) requestIdWith:(NSUInteger) type object:(id) object andTag:(NSUInteger) atag;
+
+-(void) setResultBlock:(void (^)(BOOL isSuccess,id object))callBack;
+
+@end
+

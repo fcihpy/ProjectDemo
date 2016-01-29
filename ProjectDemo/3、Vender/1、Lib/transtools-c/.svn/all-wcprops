@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c
+END
+gzip.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/gzip.h
+END
+define.h
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/define.h
+END
+encdecutils.c
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/encdecutils.c
+END
+aes256.c
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/aes256.c
+END
+encdecutils.h
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/encdecutils.h
+END
+gzip.c
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/gzip.c
+END
+aes256.h
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/svn/projects/!svn/ver/11451/t2/trunk/client/IOS/YM1.3/YM/3%E3%80%81Vender/1%E3%80%81Lib/transtools-c/aes256.h
+END

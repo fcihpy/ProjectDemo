@@ -1,0 +1,19 @@
+//
+//  MergeUserInfoViewController.h
+//  T2
+//
+//  Created by lirongfeng  on 15/1/21.
+//  Copyright (c) 2015年 locojoy. All rights reserved.
+//
+
+#import <UIKit/UIKit.h>
+#import "LOBaseViewController.h"
+
+typedef void(^MergeInfoBlock)();
+
+@interface MergeUserInfoViewController : LOBaseViewController
+
+@property(nonatomic,copy) MergeInfoBlock mergeBlock;
+- (instancetype)initWithContacts:(NSArray *)contacts;
+- (void)canPopViewController;
+@end

@@ -1,0 +1,282 @@
+//
+//  LOSocket.m
+//  YM
+//
+//  Created by t2 on 15/7/16.
+//  Copyright (c) 2015年 YM. All rights reserved.
+//
+
+#import "LOSocket.h"
+
+@implementation LOStateObject
+
+
+@end
+
+
+@interface LOSocket()<AsyncSocketDelegate>
+{
+    AsyncSocket *clientSocket;
+    NSLock   *_lock;
+    NSTimer *_detectTimer;
+    BOOL    _isDisconnect;
+}
+@property(nonatomic,strong) NSString *uid;
+@property(nonatomic,strong) NSString *m_address;
+@property(nonatomic,assign) NSUInteger m_port;
+@property(nonatomic,weak) id<LOSocektDelegate>delegate;
+@end
+
+
+@implementation LOSocket
+
+- (void)connectHost:(NSString *)ip port:(NSUInteger)port
+{
+    if (![clientSocket isConnected])
+    {
+        self.m_address = ip;
+        self.m_port = port;
+        
+        [self didBackConnect];
+       // [clientSocket connectToHost:self.m_address onPort:self.m_port withTimeout:25.f error:&error];
+        //[self performSelectorInBackground:@selector(didBackConnect) withObject:nil];
+    }
+}
+
+-(void) didBackConnect
+{
+    NSError *error = nil;
+    if (![clientSocket isConnected]) {
+        //if ([clientSocket isDisconnected])
+        {
+            BOOL br = [clientSocket connectToHost:self.m_address onPort:self.m_port withTimeout:25.f error:&error];
+            if (!br ||error)
+            {
+                NSLog(@"connectToHost error %@",error);
+                [clientSocket disconnect];
+            }
+        }
+    }
+}
+
+- (instancetype)initWithUid:(NSString *)uid withDelegate:(id<LOSocektDelegate>)delegate
+{
+    self = [super init];
+    if (self) {
+        self.delegate = delegate;
+        _lock = [[NSLock alloc] init]; _isDisconnect = YES;
+        clientSocket = [[AsyncSocket alloc] initWithDelegate:self];
+        [clientSocket setRunLoopModes:[NSArray arrayWithObject:NSRunLoopCommonModes]];
+        self.uid = uid;
+        
+    }
+    return self;
+}
+
+-(void) disconnect
+{
+     [self stopTimer];
+    _isDisconnect = NO;
+    [clientSocket disconnect];
+    clientSocket.delegate = nil;
+}
+
+- (void)dealloc
+{
+    [self disconnect];
+}
+
+-(void) startTimer
+{
+    if(nil == _detectTimer){
+        _detectTimer = [NSTimer scheduledTimerWithTimeInterval:60.f target:self selector:@selector(sendDetectPack) userInfo:nil repeats:YES];
+    }
+}
+
+-(void) stopTimer
+{
+    if(_detectTimer && [_detectTimer isValid]){
+        [_detectTimer invalidate];
+        _detectTimer = nil;
+    }
+}
+
+-(void) sendDetectPack
+{
+    [self didBackConnect];
+    [self sendPack:1];
+}
+
+-(void) sendPack:(NSInteger) type
+{
+    NSData *data = [self headData:type];
+    [clientSocket writeData:data withTimeout:-1 tag:0];
+}
+#pragma mark Delegate
+
+- (void)onSocket:(AsyncSocket *)sock willDisconnectWithError:(NSError *)err
+{
+    NSLog(@"client willDisconnectWithError:%@",err);
+   // [self didBackConnect];
+}
+
+- (void)onSocketDidDisconnect:(AsyncSocket *)sock
+{
+    //服务器已断开
+    //[self didBackConnect];
+}
+
+- (void)onSocket:(AsyncSocket *)sock didConnectToHost:(NSString *)host port:(UInt16)port
+{
+    //这是异步返回的连接成功，
+    [sock readDataWithTimeout:-1 tag:0];
+    [self sendPack:0];
+    [self startTimer];
+}
+
+- (void)onSocket:(AsyncSocket *)sock didReadData:(NSData *)data withTag:(long)tag
+{
+    if (data == nil || data.length < 12) {
+        [sock readDataWithTimeout:-1 tag:0];
+        return;
+    }
+    BOOL (^ checkBlock)(NSData *) = ^(NSData *hdata){
+        char tbuf[4] = {0};
+        [hdata getBytes:tbuf length:4]; //return YES;
+        BOOL br =  (memcmp(tbuf, "\0RES", 4) == 0);
+        return br;
+    };
+    unsigned int (^ cmdBlock)(NSData *) = ^(NSData *hdata){
+        int cmd = 0;
+        [hdata getBytes:&cmd range:NSMakeRange(4, 4)];
+        return ntohl(cmd);
+    };
+    unsigned int (^ bodyLengBlock)(NSData *) = ^(NSData *hdata){
+        int length = 0;
+        [hdata getBytes:&length range:NSMakeRange(8, 4)];
+        return ntohl(length);
+    };
+    NSString* (^cmdGetUidBlock)(NSData *,UInt32 *) = ^(NSData *bdata,UInt32 *ulen){
+        UInt32 uidLength = 0;
+        [bdata getBytes:&uidLength range:NSMakeRange(0, 4)];
+        uidLength = ntohl(uidLength);
+        memcpy(ulen, &uidLength, 4);
+        NSData *uidData = [bdata subdataWithRange:NSMakeRange(4, uidLength)];
+        NSString *uid = [[NSString alloc] initWithData:uidData encoding:NSUTF8StringEncoding];
+        return uid;
+    };
+    NSDictionary *(^getJsonCmd)(NSData *,UInt32 *) = ^(NSData *bdata,UInt32 *len){
+        UInt32 uidLength = 0;
+        [bdata getBytes:&uidLength range:NSMakeRange(0, 4)];
+        uidLength = ntohl(uidLength);
+        memcpy(len, &uidLength, 4);
+        NSData *ndata = [bdata subdataWithRange:NSMakeRange(4, uidLength)];
+        __autoreleasing NSError* error = nil;
+        NSDictionary* result = [NSJSONSerialization JSONObjectWithData:ndata options:kNilOptions error:&error];
+        //if (error != nil) return nil;
+        return result;
+    };
+    
+    NSData *head = [data subdataWithRange:NSMakeRange(0,12)];
+    if (checkBlock(head)) {
+        UInt32 cmd = cmdBlock(head);
+        UInt32 bodyLength = bodyLengBlock(head);
+        if (cmd == 1)  //收到连接
+        {
+            NSData *body = [data subdataWithRange:NSMakeRange(12, bodyLength)];
+            UInt32 len = 0;
+            NSString *uid = cmdGetUidBlock(body,&len);
+            NSLog(@"uid=%@",uid);
+            NSData *bodysub = [body  subdataWithRange:NSMakeRange(len+4, bodyLength-len-4)];
+            if (bodysub && bodysub.length > 0) {
+                NSDictionary *dic = getJsonCmd(bodysub,&len);
+                if (dic) {
+                    NSNumber *code = dic[@"error"];
+                    if (_delegate && code && [_delegate respondsToSelector:@selector(didErrorCode:code:)]) {
+                        [_delegate didErrorCode:self code:code.integerValue];
+                    }
+                    
+                }
+            }
+        }else if (cmd == 2){  //
+            
+            NSData *body = [data subdataWithRange:NSMakeRange(12, bodyLength)];
+            UInt32 uidLength = 0;
+            NSString *uid = cmdGetUidBlock(body,&uidLength);
+            NSInteger start = 4+uidLength;
+            if ([self.uid isEqualToString:uid]) {
+                UInt32 jsonLength = 0;
+                [body getBytes:&jsonLength range:NSMakeRange(start, 4)];
+                jsonLength = ntohl(jsonLength);
+                start += 4;
+                NSData *jsonData = [body subdataWithRange:NSMakeRange(start, jsonLength)];
+                id dict=[NSJSONSerialization  JSONObjectWithData:jsonData options:0 error:nil];
+                if (dict) {
+                    LOStateObject *obj = [[LOStateObject alloc] initWithDictionary:dict];
+                    if (_delegate && obj && [_delegate respondsToSelector:@selector(didReadState:object:)]) {
+                        [_delegate didReadState:self object:obj];
+                    }
+                }
+            }
+        }else if (cmd == 15){  //
+        
+        }
+    }
+    [sock readDataWithTimeout:-1 tag:0];
+}
+
+-(void)onSocket:(AsyncSocket *)sock didWriteDataWithTag:(long)tag
+{
+    NSLog(@"client didWriteDataWithTag:%ld",tag);
+    [sock readDataWithTimeout:-1 tag:0];
+}
+/*
+ 12..15]=uid字节数（网络字节序）
+ [16..x]=uid用户id
+ [x+1..x+4]=0
+ */
+//建立连接的 body
+-(NSData *) body
+{
+    NSMutableData *result = [[NSMutableData alloc] init];
+    NSString *uid = self.uid;
+    NSData * uidData = [uid dataUsingEncoding:NSUTF8StringEncoding];
+    int uidLength = htonl([uidData length]);
+    [result appendBytes:&uidLength length:4];
+    [result appendData:uidData];
+    NSDictionary *dic = @{@"login_key":self.login_key};
+    NSString *json = [dic JSONString];
+    NSData *logkey = [json dataUsingEncoding:NSUTF8StringEncoding];
+    int end = htonl([logkey length]);
+    [result appendBytes:&end length:4];
+    [result appendData:logkey];
+    return  result;
+}
+//探测包得 body
+-(NSData *) detectBody
+{
+    NSMutableData *result = [[NSMutableData alloc] init];
+    int leng = htonl(4);  int content = 8;
+    [result appendBytes:&leng length:4];
+    [result appendBytes:&content length:4];
+    return  result;
+}
+// type -0  表示建立连接    1 表示 发出 探测
+-(NSData *) headData:(NSInteger)type
+{
+    NSMutableData *data = [[NSMutableData alloc] init];
+    char *packet = (char *)malloc(4);
+    memset(packet, 0, 4);
+    memcpy(packet+1, "REQ", 3);
+    [data appendBytes:packet length:4]; free(packet);
+    int cmd = (type == 0)?htonl(0):htonl(14);  //ntohl
+    [data appendBytes:&cmd length:4];
+    NSData *body = (type == 0)?[self body]:[self detectBody];
+    int bodySize = htonl([body length]);
+    [data appendBytes:&bodySize length:4];
+    [data appendData:body];
+    return data;
+}
+
+
+@end

@@ -1,0 +1,157 @@
+//
+//  LOPageViewController.m
+//  YM
+//
+//  Created by t2 on 15/5/13.
+//  Copyright (c) 2015年 YM. All rights reserved.
+//
+
+#import "LOPageViewController.h"
+#import "LOHelp.h"
+#import "UIView+image.h"
+@interface LOPageViewController ()<SwipeViewDataSource,SwipeViewDelegate>
+{
+    UIButton  *_startButton;
+
+}
+
+@property(nonatomic,strong) NSArray *dataSources;
+@end
+
+@implementation LOPageViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    self.dataSources = @[@"greenhand01", @"greenhand02", @"greenhand03",@"greenhand04",@"greenhand05",@"greenhand06"];
+    SwipeView *swipview = [[SwipeView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+    [swipview setBackgroundColor:[UIColor clearColor]];
+    swipview.dataSource = self;
+    swipview.delegate = self;
+    [swipview setDefault];
+    [swipview.pageControl setFrame:CGRectMake(0, self.view.frame.size.height - 40.f, self.view.frame.size.width, 20.f)];
+    swipview.pageControl.currentPageIndicatorTintColor = C2_COLOR;
+    swipview.pageControl.pageIndicatorTintColor = B0_COLOR;
+    
+    
+    [self.view addSubview:swipview];
+    [self.view setBackgroundColor:[UIColor whiteColor]];
+    CGSize butSize = CGSizeMake(130.f, 45.f);
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+    [button setFrame:CGRectMake((self.view.frame.size.width - butSize.width)/2.f, self.view.frame.size.height - 40-10.f - butSize.height, butSize.width, butSize.height)];
+    button.backgroundColor = C1_COLOR;
+    button.titleLabel.font = [UIFont boldSystemFontOfSize:16.f];
+    [button setTitle:NSLocalizedString(@"立即进入", nil) forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [button maskBound:1.0f radius:5.f brodercolor:[UIColor clearColor]];
+    [button addTarget:self action:@selector(startApp:) forControlEvents:UIControlEventTouchUpInside];
+    _startButton = button;
+    _startButton.hidden = YES;
+    [self.view addSubview:button];
+}
+
+- (void)startApp:(id)object
+{
+    [self dismissViewControllerAnimated:NO completion:^{
+        self.didSelectedEnter();
+    }];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+#pragma -mark SwipeView dataSource
+- (NSInteger)numberOfItemsInSwipeView:(SwipeView *)swipeView
+{
+    return self.dataSources.count;
+}
+
+- (UIView *)swipeView:(SwipeView *)swipeView viewForItemAtIndex:(NSInteger)index reusingView:(UIView *)view
+{
+    UIImage *image = [UIImage imageLoadFile:_dataSources[index]];
+#if 0
+    //568 /480 = 1.183333333   x*1.8333=270
+    CGFloat tmp =  self.view.frame.size.height/480.f;
+    //270/tmp,362/tmp
+    
+    CGSize imgSize = CGSizeMake(228.169f*tmp, 305.9155f*tmp);
+    UIView *pageView = view;
+    if (pageView == nil) {
+        pageView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+        pageView.backgroundColor = [UIColor clearColor];
+        
+        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake((pageView.frame.size.width - imgSize.width)/2.f, pageView.frame.size.height/10.f, imgSize.width, imgSize.height)];
+        iv.tag = 0x111;
+        [pageView addSubview:iv];
+        CGFloat sx = 50.f;
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(sx, iv.frame.origin.y+iv.frame.size.height+10.f, pageView.frame.size.width-(2*sx), 60.f)];
+        label.backgroundColor = [UIColor clearColor];
+        label.textColor = [UIColor whiteColor];
+        label.font = [UIFont boldSystemFontOfSize:14.f];
+        label.textAlignment = NSTextAlignmentCenter;
+        label.numberOfLines = 0;
+        label.lineBreakMode = NSLineBreakByWordWrapping;
+        label.tag = 0x122;
+        
+      //  [pageView addSubview:label];
+        
+    }
+#endif
+    
+    UIImageView *pageView = (UIImageView *)view;
+    if (pageView == nil) {
+        //CGSize imgSize = swipeView.bounds.size;
+        pageView = [[UIImageView alloc] initWithFrame:swipeView.bounds];
+        
+    }
+    pageView.image = image;
+   /* UIImageView *imagView = (UIImageView *)[pageView viewWithTag:0x111];
+    if (imagView ) {
+        imagView.image = image;
+    }*/
+    /*
+    NSArray *arr = @[@"第一时间知道好友最新的联系方式与资料，麻麻再也不担心我会丢失小伙伴了",@"广告推销？骚扰诈骗？开启防骚扰提示，这些号码来电话，我是拒绝的",@"全方面立体式找出通讯录中的重复、无效联系人，让你的通讯录清爽宜人",@"群组交换、扫名片、多人递名片，多种炫酷方式，Get it！",@"无论是朋友的朋友，还是学长或学妹，都能联系他们晚上去吃串！"];
+    UILabel *label = (UILabel *)[pageView viewWithTag:0x122];
+    if (label) {
+        NSString *texg = arr[index];
+        CGRect frame = label.frame;
+         CGSize desSize = [texg sizeWithFont:label.font constrainedToSize:CGSizeMake(label.frame.size.width, MAXFLOAT)  lineBreakMode:NSLineBreakByWordWrapping];
+        //CGRect r = [[UIScreen mainScreen] bounds];
+        frame.size.height = desSize.height+5.f;
+        
+        if ([[UIScreen mainScreen] bounds].size.height > 480) {
+            frame.origin.y = imagView.frame.origin.y+imagView.frame.size.height;
+            frame.size.height = ABS(_startButton.frame.origin.y - CGRectGetMaxY(imagView.frame));
+        }else{
+            //iphone 4 iphone4s
+            if (index >= _dataSources.count -1){
+                frame.origin.y = imagView.frame.origin.y+imagView.frame.size.height+10.f - 35.f;
+            }
+        }
+        
+        label.frame = frame;
+        label.text = arr[index];
+    }*/
+    return pageView;
+}
+
+- (void)swipeViewCurrentItemIndexDidChange:(SwipeView *)swipeView
+{
+    //update page control page
+    if (swipeView.currentItemIndex >= _dataSources.count -1) {
+        _startButton.hidden = NO;
+    }else{
+        _startButton.hidden = YES;
+    }
+    
+}
+
+- (void)swipeView:(SwipeView *)swipeView didSelectItemAtIndex:(NSInteger)index
+{
+    NSLog(@"Selected item at index %i", index);
+}
+
+
+@end

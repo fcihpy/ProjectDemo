@@ -1,0 +1,863 @@
+//
+//  ContactsDoctorViewController.m
+//  YM
+//
+//  Created by t2 on 15/5/5.
+//  Copyright (c) 2015年 YM. All rights reserved.
+//
+#define HEADER_VIEW_TAG 1000
+
+#define STR_LABEL_TAG 1001
+#define SCORE_LABEL_TAG 1002
+#define OUT_SIDE_IMAGE_TAG 1003
+#define IN_SIDE_IMAGE_TAG 1004
+#define WHITE_VIEW_TAG 1005
+#define EXPERIENCE_BUTTON_TAG 1006
+#define HEALTH_LABEL_TAG 1007
+
+#define DOT_IMAGE_VIEW_TAG 3000
+#define DOT_IMAGE_VIEW1_TAG 3001
+#define DOT_IMAGE_VIEW2_TAG 3002
+
+#import "ContactsDoctorViewController.h"
+#import "ABContactsHelper.h"
+#import "BindingEmailViewController.h"
+#import "ConflictContactViewController.h"
+#import "MergeViewController.h"
+#import "DoctorObject.h"
+#import "DoctorButtonView.h"
+#import "PreventHarassViewController.h"
+#import "AppContact.h"
+#import "WaittingView.h"
+#import "SUCoreData.h"
+#import "NSArray+sorte.h"
+@interface ContactsDoctorViewController () <DoctorButtonViewDelegate, UIAlertViewDelegate>
+@property (nonatomic, strong) NSTimer *moveDotTimer;
+@property (nonatomic, strong) NSTimer *plusCountTimer;
+
+@property (nonatomic, assign) NSInteger score;
+
+@property (nonatomic, assign) NSInteger doctorState;
+
+@property (nonatomic, strong) NSArray *mergeDataArray;
+
+@property (nonatomic, strong) NSString *version;
+@property (nonatomic, strong) NSString *downUrl;
+@property (nonatomic, strong) NSNumber *allCount;
+@property (nonatomic, strong) NSNumber *isFullDown;
+
+@property (nonatomic, assign) BOOL hasOpenHarass;
+@property (nonatomic, assign) BOOL hadLoadDone;         //判断是否是从别的页面返回的（是 启动动画 否 不启动定时器）
+@property (nonatomic, assign) BOOL hasUpdate;           //判断是否有更新
+
+@end
+
+@implementation ContactsDoctorViewController
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    
+    if (!self.navigationController.navigationBarHidden) {
+        self.navigationController.navigationBarHidden = YES;
+    }
+    
+    [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleLightContent];
+    
+    if (![self.moveDotTimer isValid] && _hadLoadDone) {
+        self.moveDotTimer = [NSTimer scheduledTimerWithTimeInterval:0.01 target:self selector:@selector(moveDotImageView:) userInfo:nil repeats:YES];
+    }
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+    
+    [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleDefault];
+    
+    [self.moveDotTimer invalidate];
+    self.moveDotTimer = nil;
+    
+    [self.plusCountTimer invalidate];
+    self.plusCountTimer = nil;
+    
+    UIImageView *outSideImageView = (UIImageView *)[self.view viewWithTag:OUT_SIDE_IMAGE_TAG];
+    UIImageView *inSideImageView = (UIImageView *)[self.view viewWithTag:IN_SIDE_IMAGE_TAG];
+    [outSideImageView.layer removeAnimationForKey:@"Rotation"];
+    [inSideImageView.layer removeAnimationForKey:@"Rotation"];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    
+    self.hadLoadDone = YES;
+    self.hasUpdate = NO;
+    
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    
+    [self clearDoctorState];
+    
+    //初始为-1（0 与 nil 在判断时区分不出来）
+    self.score = -1;
+    self.version = loginResult.doctorInfo.version;
+    
+    NSInteger tmpScore = [loginResult.doctorInfo.score integerValue];
+    
+    //背景变色
+    if (loginResult.doctorInfo.score) {
+        if (tmpScore <= 69 && tmpScore >= 0) {
+            self.view.backgroundColor = ColorFromRGB(0xff, 0x5d, 0x42);
+        }else if (tmpScore <= 89 && tmpScore >= 70) {
+            self.view.backgroundColor = ColorFromRGB(0xfd, 0xb2, 0x3c);
+        }else if (tmpScore <= 100 && tmpScore >= 90) {
+            self.view.backgroundColor = C1_COLOR;
+        }
+    }else {
+        self.view.backgroundColor = C1_COLOR;
+    }
+    
+    //创建titleView
+    [self createHeaderView];
+    //动画view
+    [self createAnimateView];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+- (void)clearDoctorState
+{
+    self.score = 0;
+    self.doctorState = 0;
+}
+
+- (void)starAnimation
+{
+    WaittingView *waittingView = [WaittingView shareWaittingView];
+    [waittingView createEmptyView];
+    
+    UILabel *scoreLabel = (UILabel *)[self.view viewWithTag:SCORE_LABEL_TAG];
+    UILabel *strLabel = (UILabel *)[self.view viewWithTag:STR_LABEL_TAG];
+    UIButton *experience = (UIButton *)[self.view viewWithTag:EXPERIENCE_BUTTON_TAG];
+    
+    scoreLabel.text = detection;
+    scoreLabel.font = [UIFont boldSystemFontOfSize:30.f];
+    strLabel.hidden = YES;
+    experience.hidden = YES;
+    
+    //旋转动画
+    UIImageView *outSideImageView = (UIImageView *)[self.view viewWithTag:OUT_SIDE_IMAGE_TAG];
+    UIImageView *inSideImageView = (UIImageView *)[self.view viewWithTag:IN_SIDE_IMAGE_TAG];
+    
+    CABasicAnimation *rotationAnimation;
+    rotationAnimation = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+    rotationAnimation.toValue = [NSNumber numberWithFloat: M_PI * 2.0];
+    rotationAnimation.duration = 0.6;      //动画时长
+    rotationAnimation.repeatCount = HUGE_VALF;//你可以设置到最大的整数值
+    rotationAnimation.cumulative = NO;
+    rotationAnimation.removedOnCompletion = NO;
+    rotationAnimation.fillMode = kCAFillModeForwards;
+    [outSideImageView.layer addAnimation:rotationAnimation forKey:@"Rotation"];
+    
+    CABasicAnimation *rotationAnimation1 = rotationAnimation;
+    rotationAnimation1.toValue = [NSNumber numberWithFloat: -M_PI * 2.0];
+    [inSideImageView.layer addAnimation:rotationAnimation1 forKey:@"Rotation"];
+}
+
+- (void)stopAnimation
+{
+    //将遮挡层隐藏掉
+    WaittingView *waittingView = [WaittingView shareWaittingView];
+    [waittingView dismiss];
+    
+    //停止转圈动画
+    UIImageView *outSideImageView = (UIImageView *)[self.view viewWithTag:OUT_SIDE_IMAGE_TAG];
+    UIImageView *inSideImageView = (UIImageView *)[self.view viewWithTag:IN_SIDE_IMAGE_TAG];
+    [outSideImageView.layer removeAnimationForKey:@"Rotation"];
+    [inSideImageView.layer removeAnimationForKey:@"Rotation"];
+    
+    UIButton *experience = (UIButton *)[self.view viewWithTag:EXPERIENCE_BUTTON_TAG];
+    experience.hidden = NO;
+    
+    UILabel *scoreLabel = (UILabel *)[self.view viewWithTag:SCORE_LABEL_TAG];
+    
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    scoreLabel.text = [NSString stringWithFormat:@"%@", loginResult.doctorInfo.score?loginResult.doctorInfo.score:@"0"];
+    scoreLabel.font = [UIFont systemFontOfSize:60.f];
+}
+
+- (void)updateDoctorState
+{
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    
+    //重新算分
+    NSInteger tmpScore = 100;
+    
+    if (!loginResult.doctorInfo.isOpenPrevent || [loginResult.doctorInfo.isOpenPrevent integerValue] == 0) {
+        tmpScore -= 17;
+    }
+    
+    if (STRISEMPTY(loginResult.doctorInfo.smail)) {
+        tmpScore -= 11;
+    }
+    
+    if (loginResult.doctorInfo.no_handle_conflict && [loginResult.doctorInfo.no_handle_conflict integerValue] > 0) {
+        NSInteger count = [loginResult.doctorInfo.no_handle_conflict integerValue] * 6;
+        tmpScore -= (count > 30)?30:count;
+    }
+    
+    if (loginResult.doctorInfo.no_handle_repeat && [loginResult.doctorInfo.no_handle_repeat integerValue] > 0) {
+        NSInteger count = [loginResult.doctorInfo.no_handle_repeat integerValue] * 7;
+        tmpScore -= (count > 42)?42:count;
+    }
+    
+    self.score = tmpScore;
+    loginResult.doctorInfo.score = [NSNumber numberWithInteger:tmpScore];
+    [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+    
+    //背景变色
+    if (loginResult.doctorInfo.score) {
+        if (tmpScore <= 69 && tmpScore >= 0) {
+            self.view.backgroundColor = ColorFromRGB(0xff, 0x5d, 0x42);
+        }else if (tmpScore <= 89 && tmpScore >= 70) {
+            self.view.backgroundColor = ColorFromRGB(0xfd, 0xb2, 0x3c);
+        }else if (tmpScore <= 100 && tmpScore >= 90) {
+            self.view.backgroundColor = C1_COLOR;
+        }
+    }else {
+        self.view.backgroundColor = C1_COLOR;
+    }
+    
+    UILabel *scoreLabel = (UILabel *)[self.view viewWithTag:SCORE_LABEL_TAG];
+    scoreLabel.text = [NSString stringWithFormat:@"%ld",_score];
+}
+
+- (BOOL)getHasOpenHarassState
+{
+    //检测本地是否有防骚扰号码
+    BOOL (^hasHarass)() = ^(){
+        NSArray *keywordArray = ID_NAMED(@"PREVENT_HARASS");
+        
+        BOOL boolean = NO;
+        for (NSString *nameStr in keywordArray) {
+            NSArray *array = [ABContactsHelper contactsMatchingName:nameStr];
+            if (array && [array count] > 0) {
+                ABContact *abContact = (ABContact *)[array firstObject];
+                self.allCount = @([self.allCount integerValue] + [abContact.phoneArray count]);
+                boolean = YES;
+            }
+        }
+        
+        return boolean;
+        /*
+        NSArray *array = [ABContactsHelper contactsMatchingNames:keywordArray];
+        if (array && [array count] > 0) {
+            return YES;
+        }
+        
+        return NO;
+         */
+        /*
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString *docDir = [paths objectAtIndex:0];
+        NSString *filePath = [docDir stringByAppendingString:@"/preventHarass.txt"];
+        
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        if ([fileManager fileExistsAtPath:filePath]) {
+            return YES;
+        }else {
+            return NO;
+        }
+         */
+    };
+    
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    if (!loginResult.doctorInfo.score) {
+        return hasHarass();
+    }else {
+        BOOL boolean = NO;
+        if (loginResult.doctorInfo.isOpenPrevent && [loginResult.doctorInfo.isOpenPrevent integerValue] == 1) {
+            boolean = YES;
+        }
+        return boolean;
+    }
+}
+
+#pragma mark - create view
+
+- (void)createHeaderView
+{
+    CGFloat y = 0;
+    if (IS_IOS7) {
+        y = 20;
+    }
+    
+    UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 44 + y)];
+    headerView.tag = HEADER_VIEW_TAG;
+    headerView.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:headerView];
+    
+    UIButton *backButton = [self createLeftBackButton:string_exploration Color:[UIColor whiteColor]];
+    [headerView addSubview:backButton];
+    
+    CGRect frame = backButton.frame;
+    frame.origin.y = y;
+    backButton.frame = frame;
+    
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 90, 30)];
+    titleLabel.center = CGPointMake(headerView.frame.size.width / 2, y + 44 / 2);
+    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.font = [UIFont boldSystemFontOfSize:17.f];
+    titleLabel.text = contact_doctor;
+    [headerView addSubview:titleLabel];
+}
+
+- (void)createAnimateView
+{
+    //圆点
+    UIImageView *dotImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+    dotImageView.tag = DOT_IMAGE_VIEW_TAG;
+    [dotImageView setImage:IMAGE_NAMED(@"dot_bg.png")];
+    [self.view addSubview:dotImageView];
+    
+    UIImageView *dotImageView1 = [[UIImageView alloc] initWithFrame:CGRectMake(0, dotImageView.frame.size.height, self.view.frame.size.width, self.view.frame.size.height)];
+    dotImageView1.tag = DOT_IMAGE_VIEW1_TAG;
+    [dotImageView1 setImage:IMAGE_NAMED(@"dot_bg.png")];
+    [self.view addSubview:dotImageView1];
+    
+    UIImageView *dotImageView2 = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, self.view.frame.size.height)];
+    dotImageView2.tag = DOT_IMAGE_VIEW2_TAG;
+    [dotImageView2 setImage:IMAGE_NAMED(@"dot_bg.png")];
+    [self.view addSubview:dotImageView2];
+    
+    UIImage *doctorImage1 = IMAGE_NAMED(@"doctor1");
+    UIImage *doctorImage2 = IMAGE_NAMED(@"doctor2");
+    
+    UIImageView *outSideImageView = [[UIImageView alloc] initWithFrame:CGRectMake((self.view.frame.size.width - doctorImage1.size.width) / 2, ScreenHegiht * 0.15, doctorImage1.size.width, doctorImage1.size.height)];
+    outSideImageView.tag = OUT_SIDE_IMAGE_TAG;
+    [outSideImageView setImage:doctorImage1];
+    [self.view addSubview:outSideImageView];
+    
+    UIImageView *inSideImageView = [[UIImageView alloc] initWithFrame:CGRectMake((self.view.frame.size.width - doctorImage2.size.width) / 2, ScreenHegiht * 0.15, doctorImage2.size.width, doctorImage2.size.height)];
+    inSideImageView.tag = IN_SIDE_IMAGE_TAG;
+    [inSideImageView setImage:doctorImage2];
+    [self.view addSubview:inSideImageView];
+    
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    
+    NSString *score = loginResult.doctorInfo.score?[NSString stringWithFormat:@"%@", loginResult.doctorInfo.score]:not_experience;
+    
+    UILabel *healthyLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, ScreenHegiht * 0.24, self.view.frame.size.width, 20)];
+    healthyLabel.tag = HEALTH_LABEL_TAG;
+    healthyLabel.font = [UIFont systemFontOfSize:15];
+    healthyLabel.textColor = [UIColor whiteColor];
+    healthyLabel.textAlignment = NSTextAlignmentCenter;
+    healthyLabel.text = health_score;
+    [self.view addSubview:healthyLabel];
+    
+    UILabel *scoreLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, ScreenHegiht * 0.27, self.view.frame.size.width, 60)];
+    scoreLabel.tag = SCORE_LABEL_TAG;
+    scoreLabel.font = [UIFont systemFontOfSize:60.f];
+    scoreLabel.textColor = [UIColor whiteColor];
+    scoreLabel.textAlignment = NSTextAlignmentCenter;
+    scoreLabel.text = score;
+    [self.view addSubview:scoreLabel];
+    /*
+    UILabel *strLabel = [[UILabel alloc] initWithFrame:CGRectMake(self.view.frame.size.width * 0.6, ScreenHegiht * 0.24, 20, 20)];
+    strLabel.tag = STR_LABEL_TAG;
+    strLabel.text = string_score;
+    strLabel.textColor = [UIColor whiteColor];
+    strLabel.textAlignment = NSTextAlignmentCenter;
+    strLabel.font = [UIFont boldSystemFontOfSize:16.f];
+    [self.view addSubview:strLabel];
+     */
+    
+    NSString *experienceStr = nil;
+    if (!loginResult.doctorInfo.score) {
+//        strLabel.hidden = YES;
+        scoreLabel.font = [UIFont boldSystemFontOfSize:30.f];
+        experienceStr = began_experience;
+    }else {
+        experienceStr = re_experience;
+    }
+    
+    UIButton *experienceButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    experienceButton.tag = EXPERIENCE_BUTTON_TAG;
+    [experienceButton setTitle:experienceStr forState:UIControlStateNormal];
+    experienceButton.titleLabel.font = [UIFont systemFontOfSize:16.f];
+    experienceButton.frame = CGRectMake((self.view.frame.size.width - 110) / 2, ScreenHegiht * 0.51, 110, 44);
+    [experienceButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [experienceButton setTitleColor:[UIColor whiteColor] forState:UIControlStateHighlighted];
+    [experienceButton maskBound:1 radius:22 brodercolor:[UIColor whiteColor]];
+    [experienceButton addTarget:self action:@selector(buttonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:experienceButton];
+    
+    UIView *whiteView = [[UIView alloc] initWithFrame:CGRectMake(0, ScreenHegiht * 0.64, self.view.frame.size.width, self.view.frame.size.height - ScreenHegiht * 0.64)];
+    whiteView.backgroundColor = [UIColor whiteColor];
+    whiteView.tag = WHITE_VIEW_TAG;
+    [self.view addSubview:whiteView];
+    
+    if (loginResult.doctorInfo.isOpenPrevent) {
+        self.hasOpenHarass = ([loginResult.doctorInfo.isOpenPrevent integerValue] == 1)?YES:NO;
+    }
+    
+    for (int i = 0; i < 4; i++) {
+        DoctorButtonView *doctorView = [[DoctorButtonView alloc] initWithFrame:CGRectMake((i % 2 == 0)?0:self.view.frame.size.width / 2, (i < 2)?0:ScreenHegiht * 0.17, self.view.frame.size.width / 2, ScreenHegiht * 0.17)];
+        doctorView.delegate = self;
+        [doctorView updateView:i HasOpenHarass:_hasOpenHarass];
+        [whiteView addSubview:doctorView];
+        
+        //分割线
+        if (i == 0 || i == 2) {
+            //竖着的分割线
+            UIView *lineView = [[UIView alloc] initWithFrame:CGRectMake(doctorView.frame.size.width - 0.5, doctorView.frame.origin.y, 1, doctorView.frame.size.height)];
+            lineView.backgroundColor = H0_COLOR;
+            [whiteView addSubview:lineView];
+        }
+        
+        //横着的分割线
+        UIView *lineView = [[UIView alloc] initWithFrame:CGRectMake(doctorView.frame.origin.x, doctorView.frame.origin.y + doctorView.frame.size.height - 0.5, doctorView.frame.size.width, 1)];
+        lineView.backgroundColor = H0_COLOR;
+        [whiteView addSubview:lineView];
+    }
+    
+    //开启动画
+    if (![_moveDotTimer isValid]) {
+        self.moveDotTimer = [NSTimer scheduledTimerWithTimeInterval:0.01 target:self selector:@selector(moveDotImageView:) userInfo:nil repeats:YES];
+    }
+}
+
+#pragma mark - button selected
+
+- (void)goback
+{
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)startTest
+{
+    //开始体验
+    [self clearDoctorState];
+    
+    [self starAnimation];
+    
+    //查看绑定邮箱
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    if (IS_NOT_EMPTY(loginResult.user.smail)) {
+        self.score = 11;
+        loginResult.doctorInfo.smail = loginResult.user.smail;
+        [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+    }else {
+        self.doctorState += 1;
+    }
+    
+    //重复联系人
+    [self mergeDataFormate];
+}
+
+- (void)buttonTouchUpInside:(UIButton *)button
+{
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    if (loginResult.doctorInfo.score) {
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:nil message:[NSString stringWithFormat:alert_score_check, loginResult.doctorInfo.score] delegate:self cancelButtonTitle:button_cancel otherButtonTitles:re_experience, nil];
+        [alert show];
+    }else {
+        [self startTest];
+    }
+}
+
+- (void)getConflictData
+{
+    //查看冲突联系人
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    NSInteger conflictsCount = loginResult.doctorInfo.no_handle_conflict?[loginResult.doctorInfo.no_handle_conflict integerValue]:0;
+    
+    self.score += 30;
+    
+    if (conflictsCount > 0) {
+        NSInteger cutscore = conflictsCount * 6;
+        if (cutscore > 30) {
+            cutscore = 30;
+        }
+        
+        self.score -= cutscore;
+        
+        if (cutscore > 0) {
+            self.doctorState += 4;
+        }
+    }
+    
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        self.hasOpenHarass = [self getHasOpenHarassState];
+        
+        LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+        if (!self.hasOpenHarass) {
+            loginResult.doctorInfo.isOpenPrevent = @0;
+        }else {
+            loginResult.doctorInfo.isOpenPrevent = @1;
+        }
+        [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            //查看是否设置了防骚扰
+            if (_hasOpenHarass) {
+                //已开启
+                self.score += 17;
+                
+                if (self.score > 100) {
+                    self.score = 100;
+                }
+                
+                self.doctorState += 8;
+                
+                //检查防骚扰更新
+                __weak typeof(self) weakSelf = self;
+                [[_http http_resCheck:loginResult.user.userId Version:self.hasUpdate?@"":loginResult.doctorInfo.version] setResultBlock:^(BOOL isSuccess, id object) {
+                    if (isSuccess) {
+                        if (object && [object isKindOfClass:[NSDictionary class]]) {
+                            weakSelf.hasUpdate = YES;
+                            
+                            NSDictionary *dict = (NSDictionary *)object;
+                            
+                            weakSelf.version = dict[@"s_version"];
+                            weakSelf.allCount = dict[@"s_allcount"];
+                            weakSelf.isFullDown = dict[@"s_isfull"];
+                            weakSelf.downUrl = dict[@"s_address"];
+                            
+                            if (![loginResult.doctorInfo.version isEqualToString:weakSelf.version]) {
+                                weakSelf.score -= 5;
+                            }
+                            
+                            //当检测时 发现防骚扰已为开启状态并且本地存储的版本号为空时 保存当前防骚扰信息
+                            if (weakSelf.hasOpenHarass && STRISEMPTY(loginResult.doctorInfo.version)) {
+                                LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+//                                loginResult.doctorInfo.version = weakSelf.version;
+                                loginResult.doctorInfo.isOpenPrevent = @1;
+                                loginResult.doctorInfo.downUrl = weakSelf.downUrl;
+                                loginResult.doctorInfo.allCount = weakSelf.allCount;
+                                loginResult.doctorInfo.isFullDown = weakSelf.isFullDown;
+                                [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+                            }
+                        }
+                        
+                        [weakSelf startPlusTimer];
+                    }
+                }];
+            }else {
+                loginResult.doctorInfo.score = [NSNumber numberWithInteger:self.score];
+                [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+                //未开启
+                [self startPlusTimer];
+            }
+        });
+    });
+}
+
+- (void)startPlusTimer
+{
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    loginResult.doctorInfo.score = [NSNumber numberWithInteger:_score];
+    [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+    
+    if (![self.plusCountTimer isValid]) {
+        UILabel *scoreLabel = (UILabel *)[self.view viewWithTag:SCORE_LABEL_TAG];
+        scoreLabel.text = @"100";
+        
+        self.plusCountTimer = [NSTimer scheduledTimerWithTimeInterval:0.05 target:self selector:@selector(plusCount:) userInfo:nil repeats:YES];
+    }
+}
+
+- (void)mergeDataFormate
+{
+    //开始计算重复联系人
+    /*
+    DoctorObject *doctorObj = [DoctorObject shareDoctorObject];
+    [doctorObj doctorRepeatContactArray];
+    [doctorObj setRepeatArrayBlock:^(NSArray *repeatArray){
+        self.mergeDataArray = [repeatArray copy];
+        
+        self.score += 42;
+        
+        NSInteger cutCount = [_mergeDataArray count] * 7;
+        if (cutCount > 42) {
+            cutCount = 42;
+        }
+        
+        self.score -= cutCount;
+        
+        if (cutCount > 0) {
+            self.doctorState += 2;
+        }
+        
+        [self getConflictData];
+    }];
+     */
+    
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        self.mergeDataArray = [[SUCoreData sharedDB] two_fromat_tow:[[SUCoreData sharedDB] resperdic]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+            loginResult.doctorInfo.no_handle_repeat = [NSNumber numberWithInteger:[_mergeDataArray count]];
+            [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+            
+            self.score += 42;
+            
+            NSInteger cutCount = [_mergeDataArray count] * 7;
+            if (cutCount > 42) {
+                cutCount = 42;
+            }
+            
+            self.score -= cutCount;
+            
+            if (cutCount > 0) {
+                self.doctorState += 2;
+            }
+            [self getConflictData];
+        });
+    });
+}
+
+#pragma mark - timer
+
+- (void)moveDotImageView:(NSTimer *)timer
+{
+    UIImageView *dotImageView = (UIImageView *)[self.view viewWithTag:DOT_IMAGE_VIEW_TAG];
+    UIImageView *dotImageView1 = (UIImageView *)[self.view viewWithTag:DOT_IMAGE_VIEW1_TAG];
+    UIImageView *dotImageView2 = (UIImageView *)[self.view viewWithTag:DOT_IMAGE_VIEW2_TAG];
+    
+    if (!dotImageView) {
+        [self.moveDotTimer invalidate];
+        self.moveDotTimer = nil;
+        
+        return;
+    }
+    
+    if (dotImageView2.frame.origin.y <= -dotImageView2.frame.size.height) {
+        dotImageView2.alpha = 0;
+        
+        [UIView animateWithDuration:2 animations:^{
+            dotImageView2.alpha = 1;
+        }];
+        
+        CGRect frame = dotImageView2.frame;
+        frame.origin.y = 0;
+        dotImageView2.frame = frame;
+    }
+    
+    if (dotImageView.frame.origin.y == -dotImageView.frame.size.height) {
+        CGRect frame = dotImageView.frame;
+        frame.origin.y = dotImageView.frame.size.height;
+        dotImageView.frame = frame;
+    }else if (dotImageView1.frame.origin.y == -dotImageView1.frame.size.height) {
+        CGRect frame = dotImageView1.frame;
+        frame.origin.y = dotImageView1.frame.size.height;
+        dotImageView1.frame = frame;
+    }else {
+        CGRect frame = dotImageView.frame;
+        frame.origin.y -= 1;
+        dotImageView.frame = frame;
+        
+        frame = dotImageView1.frame;
+        frame.origin.y -= 1;
+        dotImageView1.frame = frame;
+        
+        frame = dotImageView2.frame;
+        frame.origin.y -= 0.3;
+        dotImageView2.frame = frame;
+    }
+}
+
+- (void)plusCount:(NSTimer *)timer
+{
+    UILabel *scoreLabel = (UILabel *)[self.view viewWithTag:SCORE_LABEL_TAG];
+    UILabel *strLabel = (UILabel *)[self.view viewWithTag:STR_LABEL_TAG];
+    
+    scoreLabel.font = [UIFont systemFontOfSize:60.f];
+    strLabel.hidden = NO;
+
+    NSInteger tmpScore = [scoreLabel.text integerValue];
+    
+    //变色
+    if (tmpScore <= 69 && tmpScore >= 0) {
+        [UIView animateWithDuration:0.5 animations:^{
+            self.view.backgroundColor = ColorFromRGB(0xff, 0x5d, 0x42);
+        }];
+    }else if (tmpScore <= 89 && tmpScore >= 70) {
+        [UIView animateWithDuration:0.5 animations:^{
+            self.view.backgroundColor = ColorFromRGB(0xfd, 0xb2, 0x3c);
+        }];
+    }else if (tmpScore <= 100 && tmpScore >= 90) {
+        [UIView animateWithDuration:0.5 animations:^{
+            self.view.backgroundColor = C1_COLOR;
+        }];
+    }
+    
+    if (tmpScore <= 0 || tmpScore == _score) {
+        [self.plusCountTimer invalidate];
+        self.plusCountTimer = nil;
+        
+        [self stopAnimation];
+        
+        //更改状态
+        UIView *whiteView = [self.view viewWithTag:WHITE_VIEW_TAG];
+        NSArray *viewArray = whiteView.subviews;
+        for (UIView *view in viewArray) {
+            if ([view isKindOfClass:[DoctorButtonView class]]) {
+                DoctorButtonView *doctorButtonView = (DoctorButtonView *)view;
+                switch (doctorButtonView.viewType) {
+                    case PREVENT_HARASS:{
+                        if (_doctorState & 8) {
+                            if (self.hasUpdate) {
+                                [doctorButtonView changePrevent:YES HasUpdate:YES];
+                            }else {
+                                [doctorButtonView changePrevent:YES HasUpdate:NO];
+                            }
+                        }else {
+                            [doctorButtonView changePrevent:NO HasUpdate:NO];
+                        }
+                    }
+                        break;
+                    case SAFE_EMAIL:{
+                        if (_doctorState & 1) {
+                            [doctorButtonView changeSafeEmail:YES];
+                        }else {
+                            [doctorButtonView changeSafeEmail:NO];
+                        }
+                    }
+                        break;
+                    case CONFLICT_CONTACT:{
+                        if (_doctorState & 4) {
+                            [doctorButtonView changeConflict:YES];
+                        }else {
+                            [doctorButtonView changeConflict:NO];
+                        }
+                    }
+                        break;
+                    case REPEAT_CONTACT:{
+                        if (_doctorState & 2) {
+                            [doctorButtonView changeRepeat:YES];
+                        }else {
+                            [doctorButtonView changeRepeat:NO];
+                        }
+                    }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+    }else {
+        tmpScore--;
+        scoreLabel.text = [NSString stringWithFormat:@"%ld",tmpScore];
+    }
+}
+
+
+#pragma mark - DoctorButtonView Delegate
+
+- (void)doctorButtonViewClicked:(DoctorButtonView *)doctorButtonView
+{
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    
+    if (self.score == -1 && !loginResult.doctorInfo.score) {
+        //第一次
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:nil message:alert_first_check delegate:self cancelButtonTitle:button_cancel otherButtonTitles:now_check, nil];
+        [alert show];
+    }else if (self.score == -1) {
+        //已体检过 但是当前没有体检状态
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:nil message:alert_other_check delegate:self cancelButtonTitle:button_cancel otherButtonTitles:now_check, nil];
+        [alert show];
+    }else {
+        switch (doctorButtonView.viewType) {
+            case PREVENT_HARASS:{
+                //电话防骚扰
+                PreventHarassViewController *prevent = [[PreventHarassViewController alloc] init];
+                prevent.version = self.version;
+                prevent.hasOpenHarass = self.hasOpenHarass;
+                prevent.downUrl = self.downUrl;
+                prevent.allCount = self.allCount;
+                prevent.isFullDown = self.isFullDown;
+                prevent.hasUpdate = self.hasUpdate;
+                [self.navigationController pushViewController:prevent animated:YES];
+                
+                [prevent setReloadPreventBlock:^(BOOL hasOpenHarass){
+                    self.hasOpenHarass = hasOpenHarass;
+                    self.hasUpdate = NO;
+                    [self updateDoctorState];
+                    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+                    if (loginResult.doctorInfo.allCount && [loginResult.doctorInfo.allCount integerValue] > 0) {
+                        [doctorButtonView changePrevent:YES HasUpdate:NO];
+                    }else {
+                        [doctorButtonView changePrevent:NO HasUpdate:NO];
+                    }
+                }];
+            }
+                break;
+            case SAFE_EMAIL:{
+                //绑定邮箱
+                LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+                BindingEmailViewController *bindingEmailViewController = [[BindingEmailViewController alloc] initWithDefaultEmail:loginResult.user.smail];
+                [self.navigationController pushViewController:bindingEmailViewController animated:YES];
+                
+                [bindingEmailViewController setBindingResultBlock:^(BOOL boolean){
+                    [self updateDoctorState];
+                    
+                    [doctorButtonView changeSafeEmail:!boolean];
+                }];
+            }
+                break;
+            case CONFLICT_CONTACT:{
+                //冲突联系人
+                ConflictContactViewController *conflictViewController = [[ConflictContactViewController alloc] init];
+                [self.navigationController pushViewController:conflictViewController animated:YES];
+                
+                [conflictViewController setConflictBlock:^(){
+                    [self updateDoctorState];
+                    
+                    [doctorButtonView changeConflict:YES];
+                }];
+            }
+                break;
+            case REPEAT_CONTACT:{
+                //重复联系人
+                MergeViewController * mergeViewController = [[MergeViewController alloc] initWithDataArray:_mergeDataArray];
+                [self.navigationController pushViewController:mergeViewController animated:YES];
+                
+                [mergeViewController setRepeatBlock:^(){
+                    [self updateDoctorState];
+                    
+                    [doctorButtonView changeRepeat:NO];
+                }];
+            }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+#pragma mark - UIAlertView Delegate
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+    if (buttonIndex == 1) {
+        [self startTest];
+    }
+}
+
+#pragma mark - http Delegate
+
+- (void)http_failedRequest:(IHttpRequest *)requestObject requestId:(RequestID *)requestId error:(LOError *)error
+{
+    LoginResult *loginResult = [[SaveMyInfo shareSaveMyInfo] getLoginResult];
+    if (!loginResult.doctorInfo.score) {
+        loginResult.doctorInfo.smail = @"";
+        [[SaveMyInfo shareSaveMyInfo] saveLoginResult:loginResult];
+    }
+    [self stopAnimation];
+}
+
+@end

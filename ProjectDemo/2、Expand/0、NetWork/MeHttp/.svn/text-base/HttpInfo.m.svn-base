@@ -1,0 +1,262 @@
+//
+//  HttpInfo.m
+//  GFMusic
+//
+//  Created by jiayitang on 13-10-10.
+//  Copyright (c) 2013年 jiayitang. All rights reserved.
+//
+
+#import "HttpInfo.h"
+#import "ResourceManager.h"
+#define STRISEMPTY(str) (str==nil || [cn isEqualToString:@""])
+
+#define http_info(s,c,m,t)  [[HttpInfo alloc] initWithInfo:c method:m type:t scheme:s]
+#define httpinfo_if(s,c,m,t) if(type==t){info = http_info(s,c,m,t);}
+
+//case t:info = http_info(c,m,t);break;
+//[[HttpInfo alloc] initWithInfo:@"DJobList" method:@"getDirection" type:type];
+
+@implementation HttpInfo
+-(id) initWithInfo:(NSString *)cn method:(NSString *)method type:(HTTPTYPE)htype scheme:(BOOL) scheme
+{
+    self = [super init];
+    if (self) {    
+        self.className = STRISEMPTY(cn)?nil:cn;
+        self.httpMethod = STRISEMPTY(method)?nil:method;
+        self.httpType = (htype==HTTP_BEGIN)?[NSNumber numberWithInteger:HTTP_BEGIN]:[NSNumber numberWithInteger:htype];
+      
+        self.scheme = [NSNumber numberWithBool:scheme];
+       // ;
+    }
+    return self;
+}
+-(NSString *) dicKey
+{
+    return [NSString stringWithFormat:@"khttp%@",self.httpType];
+}
+@end
+
+@interface HttpMethod()
+@property(nonatomic,strong) NSMutableDictionary *dicInfos;
+@property(nonatomic,strong) NSDictionary *errorInfo;
+@end
+
+@implementation HttpMethod
+
++(HttpMethod *) sharedMethod
+{
+    static HttpMethod *g_httinf = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        g_httinf = [[HttpMethod alloc] init];
+    });
+    return g_httinf;
+}
+
+-(void) setLoginKey:(NSString *)loginKey
+{
+    _loginKey = [loginKey copy];
+}
+
+- (id)init
+{
+    self = [super init];
+    if (self) {
+        self.errorInfo = [ResourceManager readPlist:ERROR_FILE];
+        self.dicInfos = [[NSMutableDictionary alloc] init];
+        for (HTTPTYPE type = HTTP_BEGIN+1; type < HTTPTYPE_END; type++) {
+            HttpInfo *info = nil;
+            httpinfo_if(YES,@"LoginResult",@"/imweb/app/user/logindetail",Http_login);
+            httpinfo_if(YES,nil, @"/imweb/app/user/sms/verify",Http_smsVerify);
+            httpinfo_if(YES,@"LoginResult", @"/imweb/app/user/logindetail", http_thirdLogin_loginDetail);
+            httpinfo_if(YES,nil, @"/imweb/app/user/third/check", http_thirdLogin_bindCheck);
+            httpinfo_if(YES,nil, @"/imweb/app/user/email/verify",Http_emailVerify);
+            httpinfo_if(YES,nil, @"/imweb/app/user/verify",Http_checkCode);
+            httpinfo_if(YES,nil, @"/imweb/app/user/password", Http_FindPassword);
+            httpinfo_if(NO,nil, @"/imweb/app/user/sms/message",Http_sendSms);
+            httpinfo_if(NO,nil, @"/imweb/app/user/bind", Http_bind);
+            httpinfo_if(NO,nil, @"/imweb/app/user/add", Http_Register);
+            httpinfo_if(NO,nil, @"/imweb/app/user/logout", Http_logout);
+            httpinfo_if(NO,nil, @"/imweb/app/user/edit", Http_userEdit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/sync", Http_userSync);
+            httpinfo_if(NO, nil, @"/imweb/app/user/device", http_deviceInfo);
+            httpinfo_if(NO,nil, @"/imweb/app/user/privacy", Http_userprivacy);
+            httpinfo_if(NO,nil, @"/imweb/app/user/label/add", Http_labelAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/label/delete", Http_labelDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/label/view", Http_labelView);
+            httpinfo_if(NO,nil, @"/imweb/app/user/label/sync", Http_labelSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/label/click", Http_labelClick);
+            httpinfo_if(NO,nil, @"/imweb/app/user/job/add", Http_jobAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/job/delete", Http_jobDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/job/edit", Http_jobEdit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/job/sync", Http_jobSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/education/add", Http_educationAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/education/delete", Http_educationDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/education/edit", Http_educationEdit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/education/sync", Http_educationSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/remark/add", Http_remarkAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/remark/delete", Http_remarkDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/remark/view", Http_remarkView);
+            httpinfo_if(NO,nil, @"/imweb/app/user/black/add", Http_blackAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/black/delete", Http_blackDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/black/view", Http_blackView);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/add", Http_cardAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/addcontact", Http_addContactd);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/addcontact", Http_contactAddContact);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/giveto", Http_cardgiveto);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/addfrom", Http_cardAddFrom);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/delete", Http_cardDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/sync", Http_cardSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/state", Http_userStateSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/change/sync", Http_changeSync);
+            httpinfo_if(NO,@"DMvisits", @"/imweb/app/user/visit/sync", Http_userVisitSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/visit/see", Http_userVisitRedImageCancel);
+            httpinfo_if(NO,nil, @"/imweb/app/user/userchange/sync", Http_userChangeSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/userchange/delete", Http_userChangeDeleteSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/feedback", Http_userfeedback);
+            httpinfo_if(NO,nil, @"/imweb/app/user/qrcode", Http_userQrCode);
+            httpinfo_if(NO,nil, @"/imweb/app/user/type", Http_userType);
+            httpinfo_if(NO,nil, @"/imweb/app/user/viewinfo", Http_userViewinfo);
+            httpinfo_if(NO,nil, @"/imweb/app/user/recommend/delete", Http_userRecommendDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/label/add", Http_NlabelAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/label/view", Http_NlabelView);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/label/sync", Http_NlabelSync);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/label/click", Http_NlabelClick);
+            httpinfo_if(NO,nil, @"/imweb/app/user/group/add", Http_groupAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/user/group/edit", Http_groupEdit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/group/editcontact", Http_groupEditContact);
+            httpinfo_if(NO,nil, @"/imweb/app/user/group/delete", Http_groupDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/group/sync", Http_groupSync);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/upload", Http_uploadContacts);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/add", Http_contactAdd);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/delete", Http_contactDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/viewshare", Http_contactViewShae);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/message", Http_contactMessageSet);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/adduser", Http_contactAddUser);
+            httpinfo_if(NO,nil, @"/imweb/app/conflict/sync", Http_conflictSync);
+            httpinfo_if(NO,nil, @"/imweb/app/conflict/view", Http_conflictView);
+            httpinfo_if(NO,nil, @"/imweb/app/conflict/addto", Http_conflictAddto);
+            httpinfo_if(NO,nil, @"/imweb/app/conflict/addany", Http_conflictAddany);
+            httpinfo_if(NO,nil, @"/imweb/app/conflict/delete", Http_conflictDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/xypos/upload", Http_xyposUpload);
+            httpinfo_if(NO,nil, @"/imweb/app/user/xypos/delete", Http_xyposDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/quake", Http_findQuake);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/near", Http_findNear);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/group/add", Http_findAddGroup);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/group/sync", Http_findSyncGroup);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/group/exit", Http_findExitGroup);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/shareinfo", Http_contactShareinfo);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/quake/sync", Http_findQuakeSync);
+            httpinfo_if(NO,nil, @"/imweb/app/user/find/quake/delete", Http_findQuakeDelete);
+            httpinfo_if(NO,nil, @"/imweb/app/user/search/company", Http_searchCompany);
+            httpinfo_if(NO,nil, @"/imweb/app/user/search/institution", Http_searchSchool);
+            httpinfo_if(NO,nil, @"/imweb/app/user/education/navigate", Http_selectEducation);
+            httpinfo_if(NO,nil, @"/imweb/app/user/job/navigate", Http_selectWork);
+            httpinfo_if(NO,nil, @"/imweb/app/user/job/select", Http_jobSelect);
+            httpinfo_if(NO,nil, @"/imweb/app/user/education/select", Http_eduSelect);
+            httpinfo_if(NO,nil, @"/imweb/app/user/gchat/create", Http_chatGroupCreate);
+            httpinfo_if(NO,nil, @"/imweb/app/user/gchat/edit", Http_chatGroupEdit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/gchat/exit", Http_chatGroupExit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/call/upload", Http_uploadServer);
+            httpinfo_if(NO,@"LOPersonInfo", @"/imweb/app/user/view", Http_userView);
+            httpinfo_if(NO,@"GroupChatList", @"imweb/app/user/gchat/list",Http_chatGroupList);
+            httpinfo_if(NO,nil, @"/imweb/app/user/gchat/info", Http_chatGoupInfo);
+            httpinfo_if(NO,@"BirRecInfo", @"/imweb/app/user/births/sync", Http_UserbirthsSync);
+            httpinfo_if(NO,@"SearchInfo", @"/imweb/app/user/search", Http_userSearch);
+            httpinfo_if(NO,@"SearchInfo", @"/imweb/app/user/search/all", Http_searchAll);
+            httpinfo_if(NO,@"SUSfirendList", @"/imweb/app/contact/sfriend", Http_contactSfriend);
+            httpinfo_if(NO,@"LOPersonInfo", @"/imweb/app/contact/view", Http_contactView);
+            httpinfo_if(NO,@"LOPerList", @"/imweb/app/user/recommend", Http_userRecommend);
+            httpinfo_if(NO,@"SUSyncContactList", @"/imweb/app/contact/sync", Http_SyncContacts);
+            httpinfo_if(NO,@"LOPersonInfo", @"/imweb/app/contact/edit", Http_contactEdit);
+            httpinfo_if(NO,@"SUAddRusult", @"/imweb/app/contact/addmobile", Http_contactAddMobile);
+            httpinfo_if(NO,@"GroupSync", @"/imweb/app/user/gchat/sync", Http_chatGroupSync);
+            httpinfo_if(NO,@"CircleList", @"/imweb/app/user/circle", Http_circle);
+            httpinfo_if(NO,@"CircleViewList", @"/imweb/app/user/circle/view", Http_circleView);
+            httpinfo_if(NO,nil, @"/imweb/app/user/apply/exchange", Http_applyExchange);
+            httpinfo_if(NO,nil, @"/imweb/app/user/sserver", Http_sendToken);
+            httpinfo_if(NO,@"SUSyncContactList", @"/imweb/app/contact/sync/cmatch", Http_syncCmatch);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/view/friend", Http_viewFriend);
+            httpinfo_if(NO,nil, @"/imweb/app/user/sms/apply", Http_smsApply);
+            httpinfo_if(NO,@"UPVersion", @"get_version", Http_getVersion);
+            
+            httpinfo_if(NO, @"LOConfigData", @"config", Http_getConfig);
+            httpinfo_if(NO,nil, @"add_feedback", Http_feedback);
+            httpinfo_if(NO,nil, @"get_advert", Http_advert);
+            httpinfo_if(NO,nil, @"get_evilnumber", Http_resCheck);
+            
+            httpinfo_if(NO,@"DBackUp", @"/imweb/app/user/backup/create", Http_createBackup);
+            httpinfo_if(NO,@"SUSyncContactList", @"/imweb/app/user/backup/restore", Http_restoreBackup);
+            httpinfo_if(NO,nil, @"/imweb/app/user/backup/delete", Http_deleteBackup);
+            httpinfo_if(NO,@"DSyncBack", @"/imweb/app/user/backup/sync", Http_syncBackup);
+            httpinfo_if(NO,nil, @"/imweb/app/contact/merge", http_mergeUser);
+            //thirdLogin
+
+            httpinfo_if(NO,nil, @"/imweb/app/user/edit", http_thirdLogin_bindCommit);
+            httpinfo_if(NO,nil, @"/imweb/app/user/edit", http_thirdLogin_unBind );
+            httpinfo_if(NO,nil, @"/imweb/app/user/edit", http_thirdLogin_uploadHeadImage);
+            
+            httpinfo_if(NO,nil, @"/imweb/app/user/change/usersync", http_changeUsersync);
+            httpinfo_if(NO, @"LOPerList", @"/imweb/app/user/recommendlist", Http_userRecommendNewList);
+            httpinfo_if(NO, nil, @"/imweb/app/user/recommend/ignore", Http_userIgnoreNew);
+            httpinfo_if(NO, nil, @"/imweb/app/user/recommend/see", Http_userseeNew);
+            if(info){
+                NSString *key = [info dicKey];
+                NSDictionary *dic = [info toDictionary];
+                [self.dicInfos setObject:dic forKey:key];
+            }
+        }
+    }
+    return self;
+}
+
+
+-(Class) typeClass:(HTTPTYPE )type
+{
+    NSString *key = [NSString stringWithFormat:@"khttp%ld",type];
+    NSDictionary *dic = [self.dicInfos objectForKey:key];
+    if(dic){
+        HttpInfo *info = [[HttpInfo alloc] initWithDictionary:dic];
+        return NSClassFromString(info.className);
+    }
+    return nil;
+}
+-(NSString *)typeMethod:(HTTPTYPE)type
+{
+    NSString *key = [NSString stringWithFormat:@"khttp%ld",type];
+    NSDictionary *dic = [self.dicInfos objectForKey:key];
+    if(dic){
+        HttpInfo *info = [[HttpInfo alloc] initWithDictionary:dic];
+        return info.httpMethod;
+    }
+    return nil;
+}
+
+-(BOOL) scheme:(HTTPTYPE)type
+{
+//    NSString *key = [NSString stringWithFormat:@"khttp%ld",type];
+//    NSDictionary *dic = [self.dicInfos objectForKey:key];
+//    if(dic){
+//        HttpInfo *info = [[HttpInfo alloc] initWithDictionary:dic];
+//        return [info.scheme boolValue];
+//    }
+    return NO;
+}
+
+-(BOOL) isHttps:(HTTPTYPE) type
+{
+    NSString *key = [NSString stringWithFormat:@"khttp%ld",type];
+    NSDictionary *dic = [self.dicInfos objectForKey:key];
+        if(dic){
+            HttpInfo *info = [[HttpInfo alloc] initWithDictionary:dic];
+            return [info.scheme boolValue];
+        }
+    return NO;
+}
+
+-(NSString *) errorText:(NSInteger)code
+{
+    return self.errorInfo[[[NSNumber numberWithInteger:code] stringValue]];
+}
+
+@end

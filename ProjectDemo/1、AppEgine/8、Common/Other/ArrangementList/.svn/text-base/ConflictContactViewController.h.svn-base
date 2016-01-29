@@ -1,0 +1,16 @@
+//
+//  ConflictContactViewController.h
+//  T2
+//
+//  Created by fuhailong on 14-12-29.
+//  Copyright (c) 2014年 xujunli. All rights reserved.
+//
+
+#import <UIKit/UIKit.h>
+#import "LOBaseViewController.h"
+
+typedef void(^ConflictBlock)();
+
+@interface ConflictContactViewController : LOBaseViewController
+@property (nonatomic, copy) ConflictBlock conflictBlock;
+@end

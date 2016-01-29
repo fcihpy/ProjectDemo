@@ -1,0 +1,25 @@
+//
+//  PrefixHeader.pch
+//  BaseProjectDemo
+//
+//  Created by locojoy on 15/10/26.
+//  Copyright (c) 2015年 fcihpy. All rights reserved.
+//
+
+#ifndef BaseProjectDemo_PrefixHeader_pch
+#define BaseProjectDemo_PrefixHeader_pch
+
+#import "LOHeader.h"
+#import "LOHelp.h"
+#import "LOColorMacro.h"
+#import "LOEnumMacro.h"
+#import "Singleton.h"
+#import "ResourceManager.h"
+#import "FCUitility.h"
+
+#ifdef __OBJC__
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+#endif
+
+#endif

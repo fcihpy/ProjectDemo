@@ -1,0 +1,19 @@
+//
+//  MergeViewController.h
+//  T2
+//
+//  Created by t2 on 15/2/2.
+//  Copyright (c) 2015年 locojoy. All rights reserved.
+//
+
+#import <UIKit/UIKit.h>
+#import "LOBaseViewController.h"
+
+typedef void(^RepeatBlock)();
+
+@interface MergeViewController : LOBaseViewController
+@property (nonatomic, copy) RepeatBlock repeatBlock;
+
+- (instancetype)initWithDataArray:(NSArray *)dataArray;
+- (void)reloadTableView:(NSArray *)mergeArray;
+@end

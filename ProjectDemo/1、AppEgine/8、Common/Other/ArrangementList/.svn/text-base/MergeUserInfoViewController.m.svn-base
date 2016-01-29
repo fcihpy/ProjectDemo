@@ -1,0 +1,776 @@
+//
+//  MergeUserInfoViewController.m
+//  T2
+//
+//  Created by lirongfeng on 15/1/21.
+//  Copyright (c) 2015年 locojoy. All rights reserved.
+//
+
+typedef enum {
+    FIRST,
+    SECOND
+}IMAGE_TYPE;
+
+#define TEL_INPUT_VIEW_TAG 1000
+#define INPUT_TITLE_LABEL_TAG 1001
+#define INPUT_TEL_TEXTFIELD_TAG 1002
+#define INPUT_BUTTON_TAG 1003
+#define INPUT_IMAGE_TAG 1004
+#define INPUT_DEL_BUTTON_TAG 1005
+#define FIR_IMAGE_BUTTON_TAG 1006
+#define FIR_TEXT_FIELD_TAG 1007
+
+#import "MergeUserInfoViewController.h"
+#import "ABContactsHelper.h"
+#import "PublicMethodObject.h"
+#import "TelTypeViewController.h"
+#import "WaittingView.h"
+#import "SUCoreData.h"
+#import "UIButton+WebCache.h"
+#import "UploadHeaderImage.h"
+#import "ActionView.h"
+
+@interface MergeUserInfoViewController () <UITableViewDataSource, UITableViewDelegate,UITextFieldDelegate, UploadHeaderImageDelegate, ActionViewDelegate>
+
+@property (nonatomic, strong) UITableView * tableView;
+@property (nonatomic, strong) NSArray *contactsArray;
+@property (nonatomic, strong) NSMutableArray *phonesMutArray;
+@property (nonatomic, assign) NSInteger selectIndex;
+@property (nonatomic, strong) UITextField *editTextField;
+@property (nonatomic, strong) NSData *headerImageData;
+@property (nonatomic, assign) IMAGE_TYPE imageType;
+@end
+
+@implementation MergeUserInfoViewController
+
+- (instancetype)initWithContacts:(NSArray *)contacts
+{
+    self = [super init];
+    
+    if (self) {
+        self.contactsArray = contacts;
+    }
+    
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(changeTelType:) name:@"CHANGE_TEL_TYPE" object:nil];
+    
+    self.imageType = FIRST;
+
+    self.title = merge_info;
+    
+    [self formatePhonesData];
+    
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, self.viewFrame.size.width, self.viewFrame.size.height) style:UITableViewStyleGrouped];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    self.tableView.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:_tableView];
+    
+    [self.navigationItem addRightItemString:button_save target:self action:@selector(rightBarButtonItemSelected:)];
+}
+
+- (void)formatePhonesData
+{
+    //电话号去重
+    self.phonesMutArray = [NSMutableArray array];
+    
+    LOObject *firObject = _contactsArray[0];
+    LOObject *secObject = _contactsArray[1];
+    
+    ContactEntity *firContact = firObject.entity;
+    ContactEntity *secContact = secObject.entity;
+
+    //将群名加入到数据源中
+    [_phonesMutArray addObject:@[@{@"image":@"", @"value":@""}]];
+    
+    NSArray *firPhonesArray = firContact.phones;
+    NSArray *secPhonesArray = secContact.phones;
+    
+    //已添加过的数组
+    NSMutableArray *phonesMutArray = [NSMutableArray array];
+    
+    if ([firPhonesArray count] == 0 && [secPhonesArray count] != 0) {
+        for (int i = 0; i < [secPhonesArray count]; i++) {
+            PhoneEntity *phoneEntity = [secPhonesArray objectAtIndex:i];
+            [phonesMutArray addObject:@{@"label":phoneEntity.type, @"value":[phoneEntity.phone deletePhone86], @"flag":phoneEntity.flag?phoneEntity.flag:@0}];
+        }
+    }else if ([firPhonesArray count] != 0 && [secPhonesArray count] == 0) {
+        for (int i = 0; i < [firPhonesArray count]; i++) {
+            PhoneEntity *phoneEntity = [firPhonesArray objectAtIndex:i];
+            [phonesMutArray addObject:@{@"label":phoneEntity.type, @"value":[phoneEntity.phone deletePhone86], @"flag":phoneEntity.flag?phoneEntity.flag:@0}];
+        }
+    }else if ([firPhonesArray count] != 0 && [secPhonesArray count] != 0) {
+        //判断哪个多哪个少
+        NSArray *firTempPhonesArray = nil;
+        NSArray *secTempPhonesArray = nil;
+        
+        if ([firPhonesArray count] >= [secPhonesArray count]) {
+            firTempPhonesArray = firPhonesArray;
+            secTempPhonesArray = secPhonesArray;
+        }else {
+            firTempPhonesArray = secPhonesArray;
+            secTempPhonesArray = firPhonesArray;
+        }
+        
+        for (int i = 0; i < [firTempPhonesArray count]; i++) {
+            PhoneEntity *phoneEntity = [firTempPhonesArray objectAtIndex:i];
+            NSString *phoneString = [phoneEntity.phone deletePhone86];
+            for (int j = 0; j < [secTempPhonesArray count]; j++) {
+                PhoneEntity *phoneEntity1 = [secTempPhonesArray objectAtIndex:j];
+                NSString *phoneString1 = [phoneEntity1.phone deletePhone86];
+                
+                if ([phoneString isEqualToString:phoneString1]) {
+                    //检查phoneString是不是已添加过
+                    BOOL canAdd = YES;
+                    for (NSDictionary *dict in phonesMutArray) {
+                        NSString *tempPhoneString = dict[@"value"];
+                        if ([phoneString isEqualToString:tempPhoneString]) {
+                            canAdd = NO;
+                        }
+                    }
+                    
+                    if (canAdd) {
+                        [phonesMutArray addObject:@{@"label":phoneEntity.type?phoneEntity.type:string_phone, @"value":phoneString, @"flag":phoneEntity.flag?phoneEntity.flag:@0}];
+                    }
+                    break;
+                }else {
+                    BOOL canAdd = YES;
+                    for (NSDictionary *dict in phonesMutArray) {
+                        NSString *tempPhoneString = dict[@"value"];
+                        if ([phoneString isEqualToString:tempPhoneString]) {
+                            canAdd = NO;
+                        }
+                    }
+                    
+                    if (canAdd) {
+                        [phonesMutArray addObject:@{@"label":phoneEntity.type?phoneEntity.type:string_phone, @"value":phoneString, @"flag":phoneEntity.flag?phoneEntity.flag:@0}];
+                    }
+                    
+                    canAdd = YES;
+                    
+                    for (NSDictionary *dict in phonesMutArray) {
+                        NSString *tempPhoneString = dict[@"value"];
+                        if ([phoneString1 isEqualToString:tempPhoneString]) {
+                            canAdd = NO;
+                        }
+                    }
+                    
+                    if (canAdd) {
+                        //以第一个人的号码为常用号 所以不能取phoneEntity1.flag?phoneEntity1.flag:@0
+                        [phonesMutArray addObject:@{@"label":phoneEntity1.type?phoneEntity1.type:string_phone, @"value":phoneString1, @"flag":@0}];
+                    }
+                }
+            }
+            
+            if (i == [firTempPhonesArray count] - 1) {
+                [phonesMutArray addObject:@{@"label":string_phone, @"value":@""}];
+            }
+        }
+        [_phonesMutArray addObject:phonesMutArray];
+    }
+}
+
+- (void)dealloc
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+- (UIView *)createTelView
+{
+    UIView *telView = [[UIView alloc] initWithFrame:CGRectMake(-1, 0, self.view.frame.size.width + 2, 50)];
+    telView.backgroundColor = [UIColor whiteColor];
+    
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 0, 70, 50)];
+    titleLabel.tag = INPUT_TITLE_LABEL_TAG;
+    titleLabel.textColor = A0_COLOR;
+    [telView addSubview:titleLabel];
+    
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(titleLabel.frame.origin.x + titleLabel.frame.size.width + 5, 20, 10, 16)];
+    imageView.tag = INPUT_IMAGE_TAG;
+    UIImage *image = IMAGE_NAMED(@"impress_arrow.png");
+    imageView.transform = CGAffineTransformRotate(imageView.transform, M_PI / 2);
+    imageView.image = image;
+    [telView addSubview:imageView];
+    
+    UIView *lineView = [[UIView alloc] initWithFrame:CGRectMake(imageView.frame.origin.x + imageView.frame.size.width + 5, 5, 0.5, telView.frame.size.height - 10)];
+    lineView.backgroundColor = H0_COLOR;
+    [telView addSubview:lineView];
+    
+    UIButton *touchButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    touchButton.tag = INPUT_BUTTON_TAG;
+    [touchButton addTarget:self action:@selector(telStateButtonSelected:) forControlEvents:UIControlEventTouchUpInside];
+    touchButton.frame = CGRectMake(0, 0, lineView.frame.origin.x + 1, telView.frame.size.height);
+    [telView addSubview:touchButton];
+    
+    UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(touchButton.frame.origin.x + touchButton.frame.size.width + 10, 0, telView.frame.size.width - touchButton.frame.origin.x - touchButton.frame.size.width - 20 - 16 - 10, 50)];
+    textField.placeholder = input_new_tel;
+//    textField.tintColor = A2_COLOR;
+    textField.textColor = A2_COLOR;
+    textField.keyboardType = UIKeyboardTypeNumberPad;
+    textField.delegate = self;
+    textField.tag = INPUT_TEL_TEXTFIELD_TAG;
+    [telView addSubview:textField];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(textFieldChanged:) name:UITextFieldTextDidChangeNotification object:textField];
+    
+    UIImage *delImage = IMAGE_NAMED(@"red_del.png");
+    UIButton *delButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    delButton.tag = INPUT_DEL_BUTTON_TAG;
+    delButton.frame = CGRectMake(self.view.frame.size.width - 50, 0, 50, 50);
+    [delButton setImage:delImage forState:UIControlStateNormal];
+    [delButton addTarget:self action:@selector(delButtonSelected:) forControlEvents:UIControlEventTouchUpInside];
+    [telView addSubview:delButton];
+    
+    return telView;
+}
+
+- (void)canPopViewController
+{
+    WaittingView *waittingView = [WaittingView shareWaittingView];
+    [waittingView dismiss];
+    
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)changeDelButtonHidden:(BOOL)hidden TextField:(UITextField *)textField
+{
+    UITableViewCell *cell = [self getViewSuperCell:textField];
+    
+    UIButton *delButton = (UIButton *)[cell.contentView viewWithTag:INPUT_DEL_BUTTON_TAG];
+    delButton.hidden = hidden;
+}
+
+- (UITableViewCell *)getViewSuperCell:(UIView *)subView
+{
+    return [LOPublic getSuperCell:subView];
+}
+
+- (void)switchHeaderImage:(NSString *)imageStr
+{
+    UITableViewCell *cell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+    UIButton *imageButton = (UIButton *)[cell.contentView viewWithTag:FIR_IMAGE_BUTTON_TAG];
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@o:%@", RES_BASE_URL, imageStr]];
+    [imageButton sd_setImageWithURL:url forState:UIControlStateNormal];
+    
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        NSData *data = [NSData dataWithContentsOfURL:url];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.headerImageData = data;
+        });
+    });
+}
+
+#pragma mark - tableview delegate
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    return [_phonesMutArray count];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    NSArray *array = [_phonesMutArray objectAtIndex:section];
+    return [array count];
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.row == 0 && indexPath.section == 0) {
+        return 80.f;
+    }else {
+        return 50.f;
+    }
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section
+{
+    return 15.f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section
+{
+    if (section == [_phonesMutArray count] - 1) {
+        return 15.f;
+    }else {
+        return 0.01f;
+    }
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.section == 0) {
+        UITableViewCell *firCell = [tableView dequeueReusableCellWithIdentifier:@"FirCell"];
+        if (!firCell) {
+            firCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"FirCell"];
+            
+            firCell.selectionStyle = UITableViewCellSelectionStyleNone;
+            
+            UIButton *imageButton = [UIButton buttonWithType:UIButtonTypeCustom];
+            imageButton.frame = CGRectMake(15, (80 - 60) / 2, 60, 60);
+            [imageButton maskBound:BORDER_WIDTH radius:imageButton.frame.size.height / 2 brodercolor:H0_COLOR];
+            [imageButton addTarget:self action:@selector(imageButtonSelected:) forControlEvents:UIControlEventTouchUpInside];
+            imageButton.tag = FIR_IMAGE_BUTTON_TAG;
+            [firCell.contentView addSubview:imageButton];
+            
+            CGFloat x = imageButton.frame.origin.x + imageButton.frame.size.width + 15;
+            UITextField *nameTextField = [[UITextField alloc] initWithFrame:CGRectMake(x, 0, tableView.frame.size.width - x, 80)];
+            nameTextField.delegate = self;
+            nameTextField.textColor = A0_COLOR;
+            nameTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
+            nameTextField.tag = FIR_TEXT_FIELD_TAG;
+            [firCell.contentView addSubview:nameTextField];
+        }
+        
+        [self updateFirCell:firCell];
+        
+        return firCell;
+    }else {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cell"];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"Cell"];
+            cell.backgroundColor = [UIColor clearColor];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            
+            UIView *telView = [self createTelView];
+            telView.tag = TEL_INPUT_VIEW_TAG;
+            [cell.contentView addSubview:telView];
+        }
+        
+        UIView *telView = [cell.contentView viewWithTag:TEL_INPUT_VIEW_TAG];
+        UILabel *titleLabel = (UILabel *)[telView viewWithTag:INPUT_TITLE_LABEL_TAG];
+        UITextField *textField = (UITextField *)[telView viewWithTag:INPUT_TEL_TEXTFIELD_TAG];
+        UIImageView *imageView = (UIImageView *)[cell.contentView viewWithTag:INPUT_IMAGE_TAG];
+        UIButton *button = (UIButton *)[cell.contentView viewWithTag:INPUT_BUTTON_TAG];
+        UIButton *delButton = (UIButton *)[cell.contentView viewWithTag:INPUT_DEL_BUTTON_TAG];
+        
+        NSArray *array = [_phonesMutArray objectAtIndex:indexPath.section];
+        NSDictionary *phoneDict = [array objectAtIndex:indexPath.row];
+        
+        titleLabel.text = phoneDict[@"label"];
+        textField.text = phoneDict[@"value"];
+        
+        NSNumber *flag = phoneDict[@"flag"];
+        if (flag && [flag integerValue] == 2) {
+            [titleLabel setUserInteractionEnabled:NO];
+            [textField setUserInteractionEnabled:NO];
+            
+            titleLabel.textColor = A3_COLOR;
+            textField.textColor = A3_COLOR;
+        }else {
+            [titleLabel setUserInteractionEnabled:YES];
+            [textField setUserInteractionEnabled:YES];
+            
+            titleLabel.textColor = A0_COLOR;
+            textField.textColor = A2_COLOR;
+        }
+        
+        imageView.hidden = NO;
+        button.hidden = NO;
+        textField.placeholder = input_new_tel;
+        textField.keyboardType = UIKeyboardTypeNumberPad;
+        
+        if (indexPath.row == [array count] - 1) {
+            delButton.hidden = YES;
+        }else {
+            delButton.hidden = NO;
+        }
+        
+        return cell;
+    }
+}
+
+#pragma mark - textfield delegate
+
+- (void)textFieldChanged:(NSNotification *)notification
+{
+    NSMutableArray *mutPhonesArray = [NSMutableArray arrayWithArray:[_phonesMutArray lastObject]];
+    
+    UITextField *editTextField = (UITextField *)notification.object;
+    
+    NSInteger (^getRowIndex)() = ^(){
+        UITableViewCell *cell = [LOPublic getSuperCell:editTextField];
+        NSIndexPath *indexPath = [_tableView indexPathForCell:cell];
+        return indexPath.row;
+    };
+    
+    void (^addEmptyData)() = ^(){
+        if ([mutPhonesArray count] < 4) {
+            NSDictionary *lastDict = [mutPhonesArray lastObject];
+            if (IS_NOT_EMPTY(lastDict[@"value"])) {
+                NSDictionary *emptyDict = @{@"label":string_phone, @"value":@""};
+                [mutPhonesArray addObject:emptyDict];
+            }
+        }
+    };
+    
+    void (^replaceEditData)() = ^(){
+        //操作当前编辑的电话数据
+        NSInteger editRow = getRowIndex();
+        NSDictionary *editPhoneDict = [mutPhonesArray objectAtIndex:editRow];
+        NSDictionary *newEditDict = @{@"label":editPhoneDict[@"label"], @"value":(editTextField.text.length > 0)?editTextField.text:@""};
+        [mutPhonesArray replaceObjectAtIndex:editRow withObject:newEditDict];
+        
+        addEmptyData();
+        
+        if (editRow == [mutPhonesArray count] - 2 && STRISEMPTY(editTextField.text)) {
+            NSDictionary *lastDict = [mutPhonesArray lastObject];
+            if (STRISEMPTY(lastDict[@"value"])) {
+                [mutPhonesArray removeLastObject];
+                [_phonesMutArray replaceObjectAtIndex:1 withObject:mutPhonesArray];
+                [_tableView deleteRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:[mutPhonesArray count] inSection:1]] withRowAnimation:UITableViewRowAnimationNone];
+            }else {
+                [_phonesMutArray replaceObjectAtIndex:1 withObject:mutPhonesArray];
+            }
+        }else {
+            if ([mutPhonesArray count] != [(NSArray *)[_phonesMutArray lastObject] count]) {
+                [_phonesMutArray replaceObjectAtIndex:1 withObject:mutPhonesArray];
+                [_tableView insertRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:[mutPhonesArray count] - 1 inSection:1]] withRowAnimation:UITableViewRowAnimationNone];
+            }else {
+                [_phonesMutArray replaceObjectAtIndex:1 withObject:mutPhonesArray];
+            }
+        }
+    };
+    
+    replaceEditData();
+
+    
+    /*
+    UITableViewCell *lastCell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:[mutArray count] - 1 inSection:1]];
+    UITableViewCell *lastSecCell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:[mutArray count] - 2 inSection:1]];
+    
+    UIView *lastCellView = [lastCell.contentView viewWithTag:TEL_INPUT_VIEW_TAG];
+    UIView *lastSecCellView = [lastSecCell.contentView viewWithTag:TEL_INPUT_VIEW_TAG];
+    
+    UILabel *lastCellTitleLabel = (UILabel *)[lastCell viewWithTag:INPUT_TITLE_LABEL_TAG];
+    UILabel *lastSecCellTitleLabel = (UILabel *)[lastSecCell viewWithTag:INPUT_TITLE_LABEL_TAG];
+    
+    UITextField *lastCellTextField = (UITextField *)[lastCellView viewWithTag:INPUT_TEL_TEXTFIELD_TAG];
+    UITextField *lastSecCellTextField = (UITextField *)[lastSecCellView viewWithTag:INPUT_TEL_TEXTFIELD_TAG];
+    
+    if (lastCellTextField.text.length > 0) {
+        NSDictionary *tempPhoneDict = @{@"label":lastCellTitleLabel.text, @"value":lastCellTextField.text};
+        [mutArray replaceObjectAtIndex:[mutArray count] - 1 withObject:tempPhoneDict];
+        [_phonesMutArray replaceObjectAtIndex:1 withObject:mutArray];
+    }else {
+        NSDictionary *tempPhoneDict = @{@"label":lastSecCellTitleLabel.text, @"value":lastSecCellTextField.text};
+        [mutArray replaceObjectAtIndex:[mutArray count] - 2 withObject:tempPhoneDict];
+        [_phonesMutArray replaceObjectAtIndex:1 withObject:mutArray];
+    }
+    
+    if (lastSecCellTextField && lastSecCellTextField.text.length == 3) {
+        if ([_phonesMutArray count] > 2) {
+            [_phonesMutArray removeObjectAtIndex:[_phonesMutArray count] - 1];
+            NSDictionary *phoneDict = @{@"label":string_phone, @"value":@""};
+            [_phonesMutArray replaceObjectAtIndex:[_phonesMutArray count] - 1 withObject:@[phoneDict]];
+            
+            [_tableView deleteRowsAtIndexPaths:[NSArray arrayWithObject:[NSIndexPath indexPathForRow:[_phonesMutArray count] inSection:1]] withRowAnimation:UITableViewRowAnimationLeft];
+        }else {
+            NSDictionary *phoneDict = @{@"label":string_phone, @"value":@""};
+            [_phonesMutArray replaceObjectAtIndex:[_phonesMutArray count] - 1 withObject:@[phoneDict]];
+        }
+    }else {
+        BOOL insertEmpty = NO;
+        
+        if ([mutArray count] < 4 && lastCellTextField.text.length > 0) {
+            insertEmpty = YES;
+            NSDictionary *phoneDict = @{@"label":string_phone, @"value":@""};
+            [mutArray addObject:phoneDict];
+        }
+        
+        [_phonesMutArray replaceObjectAtIndex:1 withObject:mutArray];
+        
+        if (insertEmpty) {
+            NSIndexPath *indexPath = [NSIndexPath indexPathForRow:[mutArray count] - 1 inSection:1];
+            [_tableView insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+        }
+        
+//        [_tableView reloadSections:[NSIndexSet indexSetWithIndex:1] withRowAnimation:UITableViewRowAnimationAutomatic];
+    }
+     */
+}
+
+- (BOOL)textFieldShouldBeginEditing:(UITextField *)textField
+{
+    self.editTextField = textField;
+    
+    [self changeDelButtonHidden:YES TextField:textField];
+    
+    return YES;
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField
+{
+    [self changeDelButtonHidden:NO TextField:textField];
+}
+
+#pragma mark - notification
+
+- (void)changeTelType:(NSNotification *)notification
+{
+    UITableViewCell *cell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:_selectIndex inSection:0]];
+    
+    UIView *telView = [cell.contentView viewWithTag:TEL_INPUT_VIEW_TAG];
+    UILabel *titleLabel = (UILabel *)[telView viewWithTag:INPUT_TITLE_LABEL_TAG];
+    
+    NSDictionary *dict = [notification userInfo];
+    titleLabel.text = dict[@"type"];
+    
+    //从编辑联系人页面入口进入
+    NSMutableArray *tmpMutArray = [NSMutableArray arrayWithArray:[_phonesMutArray lastObject]];
+    NSDictionary *phoneDict = [tmpMutArray objectAtIndex:_selectIndex];
+    NSDictionary *newDict = @{@"label":dict[@"type"], @"value":phoneDict[@"value"]};
+    [tmpMutArray replaceObjectAtIndex:_selectIndex withObject:newDict];
+    [_phonesMutArray replaceObjectAtIndex:[_phonesMutArray count] - 1 withObject:tmpMutArray];
+    
+    [_tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:_selectIndex inSection:1]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+#pragma mark - rightBarButtonItem selected
+
+- (void)rightBarButtonItemSelected:(UIBarButtonItem *)barButton
+{
+    NSArray *phonesArray = [_phonesMutArray lastObject];
+    
+    //筛空
+    NSMutableArray *emptyPhoneMutArray = [NSMutableArray array];
+    
+    for (int i = 0; i < [phonesArray count]; i++) {
+        NSDictionary *dict = [phonesArray objectAtIndex:i];
+        NSString *phone = dict[@"value"];
+        if (!IS_NOT_EMPTY(phone)) {
+            [emptyPhoneMutArray addObject:dict];
+        }
+    }
+    
+    //整合服务器要的数据
+    LOObject *firObject = _contactsArray[0];
+    LOObject *secObject = _contactsArray[1];
+    
+    ContactEntity *firContact = firObject.entity;
+    ContactEntity *secContact = secObject.entity;
+    
+    NSMutableDictionary *mutDict = [NSMutableDictionary dictionary];
+    [mutDict setObject:@[@{@"id":firContact.contactId}, @{@"id":secContact.contactId}] forKey:@"delete"];
+    
+    NSMutableArray *tempPhonesMutArray = [NSMutableArray array];
+    for (int i = 0; i < [phonesArray count]; i++) {
+        NSDictionary *dict = [phonesArray objectAtIndex:i];
+        if (IS_NOT_EMPTY(dict[@"value"])) {
+            [tempPhonesMutArray addObject:@{@"type":dict[@"label"], @"phone":dict[@"value"], @"flag":dict[@"flag"]?dict[@"flag"]:@0}];
+        }
+    }
+    
+    NSString *nameString = firContact.showName;
+    if (!IS_NOT_EMPTY(nameString)) {
+        nameString = secContact.showName;
+    }
+    
+    UITableViewCell *cell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+    UITextField *nameTextField = (UITextField *)[cell.contentView viewWithTag:FIR_TEXT_FIELD_TAG];
+    
+    NSMutableDictionary *tmpMutDict = [NSMutableDictionary dictionaryWithDictionary:@{@"username":nameTextField.text, @"phones":tempPhonesMutArray}];
+    
+//    if (_headerImageData) {
+//        [tmpMutDict setObject:_headerImageData forKey:@"image"];
+//    }
+    
+    [mutDict setObject:tmpMutDict forKey:@"add"];
+    
+    [[_http http_mergeUser:mutDict ImageData:_headerImageData] setResultBlock:^(BOOL isSuccess, id object) {
+        if (isSuccess) {
+            [[SUCoreData sharedDB] deleteContactWithId:firContact.contactId];
+            [[SUCoreData sharedDB] deleteContactWithId:secContact.contactId];
+            
+            LOPersonInfo *personInfo = nil;
+            if ([object isKindOfClass:[NSDictionary class]]) {
+                personInfo = [[LOPersonInfo alloc] initWithDictionary:object];
+            }else if ([object isKindOfClass:[NSArray class]]) {
+                NSArray *array = (NSArray *)object;
+                personInfo = [[LOPersonInfo alloc] initWithDictionary:[array firstObject]];
+            }
+            [[SUCoreData sharedDB] saveFromPersonInfo:personInfo];
+            
+            if (self.mergeBlock) {
+                self.mergeBlock();
+            }
+            
+            self.mergeBlock = nil;
+            
+            [self.navigationController popViewControllerAnimated:YES];
+        }
+    }];
+}
+
+#pragma mark - Update Cell
+
+- (void)updateFirCell:(UITableViewCell *)cell
+{
+    UIButton *imageButton = (UIButton *)[cell.contentView viewWithTag:FIR_IMAGE_BUTTON_TAG];
+    UITextField *nameTextField = (UITextField *)[cell.contentView viewWithTag:FIR_TEXT_FIELD_TAG];
+    
+    LOObject *firObject = _contactsArray[0];
+    LOObject *secObject = _contactsArray[1];
+    
+    ContactEntity *firContact = firObject.entity;
+    ContactEntity *secContact = secObject.entity;
+    
+    NSString *nameString = firContact.showName;
+    if (!IS_NOT_EMPTY(nameString)) {
+        nameString = secContact.showName;
+    }
+    NSString *imageStr = firContact.image;
+    if (STRISEMPTY(imageStr)) {
+        imageStr = secContact.image;
+    }
+    
+    UIImage *image = [LOPublic imageWithName:firContact.showName color:firContact.color size:imageButton.frame.size];
+    if (IS_NOT_EMPTY(imageStr)) {
+        NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@o:%@", RES_BASE_URL, imageStr]];
+        [imageButton sd_setImageWithURL:url forState:UIControlStateNormal placeholderImage:image];
+        
+        dispatch_async(dispatch_get_global_queue(0, 0), ^{
+            NSData *data = [NSData dataWithContentsOfURL:url];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.headerImageData = data;
+            });
+        });
+    }else {
+        [imageButton setImage:image forState:UIControlStateNormal];
+    }
+
+    NSString *bakName = firContact.showName?firContact.showName:secContact.showName;
+    
+    if (IS_NOT_EMPTY(bakName)) {
+        nameTextField.text = bakName;
+    }
+}
+
+#pragma mark - button selected
+
+- (void)telStateButtonSelected:(UIButton *)button
+{
+    UITableViewCell *cell = [self getViewSuperCell:button];
+    NSIndexPath *indexPath = [_tableView indexPathForCell:cell];
+    
+    self.selectIndex = indexPath.row;
+    
+    UIView *telView = [cell.contentView viewWithTag:TEL_INPUT_VIEW_TAG];
+    UILabel *titleLabel = (UILabel *)[telView viewWithTag:INPUT_TITLE_LABEL_TAG];
+    
+    TelTypeViewController *telTypeViewController = [[TelTypeViewController alloc] initWithTypeString:titleLabel.text];
+    LONavigationViewController *naviViewController = [LONavigationViewController navigationController:telTypeViewController];
+    [self presentViewController:naviViewController animated:YES completion:NULL];
+}
+
+- (void)delButtonSelected:(UIButton *)button
+{
+    UITableViewCell *cell = [self getViewSuperCell:button];
+    
+    NSIndexPath *indexPath = [_tableView indexPathForCell:cell];
+    
+    NSMutableArray *mutPhonesArray = [NSMutableArray arrayWithArray:[_phonesMutArray lastObject]];
+    
+    if (indexPath) {
+        [mutPhonesArray removeObjectAtIndex:indexPath.row];
+        [_phonesMutArray replaceObjectAtIndex:1 withObject:mutPhonesArray];
+        
+        [_tableView deleteRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:indexPath.row inSection:1]] withRowAnimation:UITableViewRowAnimationNone];
+    }
+    
+    void (^addEmptyData)() = ^(){
+        if ([mutPhonesArray count] < 4) {
+            NSDictionary *lastDict = [mutPhonesArray lastObject];
+            if (IS_NOT_EMPTY(lastDict[@"value"])) {
+                NSDictionary *emptyDict = @{@"label":string_phone, @"value":@""};
+                [mutPhonesArray addObject:emptyDict];
+                [_phonesMutArray replaceObjectAtIndex:1 withObject:mutPhonesArray];
+                [_tableView insertRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:[mutPhonesArray count] - 1 inSection:1]] withRowAnimation:UITableViewRowAnimationNone];
+            }
+        }
+    };
+    
+    addEmptyData();
+}
+
+- (void)imageButtonSelected:(UIButton *)button
+{
+    LOObject *firObject = _contactsArray[0];
+    LOObject *secObject = _contactsArray[1];
+    
+    ContactEntity *firContact = firObject.entity;
+    ContactEntity *secContact = secObject.entity;
+    
+    if (IS_NOT_EMPTY(firContact.image) && IS_NOT_EMPTY(secContact.image)) {
+        ActionView *actionView = [[ActionView alloc] initWithDelegate:self cancelButtonTitle:button_cancel otherButtonTitles:string_camera, string_by_photo, merge_use_other_header, nil];
+        [actionView show];
+    }else {
+        ActionView *actionView = [[ActionView alloc] initWithDelegate:self cancelButtonTitle:button_cancel otherButtonTitles:string_camera, string_by_photo, nil];
+        [actionView show];
+    }
+}
+
+#pragma mark - scrollview delegate
+
+- (void)scrollViewWillBeginDecelerating:(UIScrollView *)scrollView
+{
+    if (_editTextField) {
+        [_editTextField resignFirstResponder];
+    }
+}
+
+#pragma mark - ActionView Delegate
+
+- (void)actionView:(UIView *)actionView ButtonIndex:(NSInteger)buttonIndex
+{
+    if (buttonIndex == 10000) {
+        //拍照
+        UploadHeaderImage *upload = [UploadHeaderImage shareUploadImage];
+        [upload uploadHeaderTakePhotoWithDelegate:self ViewController:self];
+    }else if (buttonIndex == 10001) {
+        //从手机相册中选择
+        UploadHeaderImage *upload = [UploadHeaderImage shareUploadImage];
+        [upload uploadHeaderLocalPhotoWithViewDelegate:self Controller:self];
+    }else if (buttonIndex == 10002) {
+        //切换另一个人头像
+        if (_imageType == FIRST) {
+            LOObject *secObject = _contactsArray[1];
+            ContactEntity *secContact = secObject.entity;
+            
+            [self switchHeaderImage:secContact.image];
+            
+            self.imageType = SECOND;
+        }else if (_imageType == SECOND) {
+            LOObject *firObject = _contactsArray[0];
+            ContactEntity *firContact = firObject.entity;
+            
+            [self switchHeaderImage:firContact.image];
+            
+            self.imageType = FIRST;
+        }
+    }
+}
+
+#pragma mark - UploadHeaderImage Delegate
+
+- (void)takePickerSuccessByImageData:(NSData *)imageData
+{
+    UITableViewCell *cell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+    UIButton *imageButton = (UIButton *)[cell.contentView viewWithTag:FIR_IMAGE_BUTTON_TAG];
+    
+    UIImage *image = [UIImage imageWithData:imageData];
+    [imageButton setImage:image forState:UIControlStateNormal];
+    
+    self.headerImageData = imageData;
+}
+
+@end
